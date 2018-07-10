@@ -1,0 +1,11 @@
+#!/bin/bash
+function before_collect() {
+}
+
+function after_collect() {
+  local mysqld_pid_file=$(mysql ${EXT_ARGV} -BNe "SELECT @@global.pid_file"|awk '{print $2}');
+  local mysqld_pid=$(cat ${mysqld_pid_file});
+  (perf record -a -g -F99 -p ${mysqld_pid} -o ${OPT_DEST}/${prefix}-perf.data -- sleep 30);
+  perf report -i ${OPT_DEST}/${prefix}-perf.data > ${OPT_DEST}/${prefix}-perf.report.out;
+  perf script -i ${OPT_DEST}/${prefix}-perf.data > ${OPT_DEST}/${prefix}-perf.script.out;
+}

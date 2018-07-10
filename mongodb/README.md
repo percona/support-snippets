@@ -1,0 +1,1 @@
+# MongoDB snippet repo

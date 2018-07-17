@@ -3,12 +3,28 @@
 This wrapper helps to quickly create lxc machines for testing purposes
 
 ## Pre Requirements
-In o`rder to use this wrapper, you must have a storage with the same name as your username. This wrapper uses `whoami` to find the correct storage.
+In order to use this wrapper, you must have a storage with the same name as your username. This wrapper uses `whoami` to find the correct storage.
 
 ```
 lxc storage create marcelo.altmann dir source=/home/marcelo.altmann/lxc
 ```
 
+
+## Usage
+```
+./create_machines.sh
+Usage: [ options ]
+Options:
+--type=[pxc|proxysql|proxysql-pxc|
+           standalone|replication] 			Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication
+--name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[type]-[name]
+						such as marcelo.altmann-pxc-xxxxxx
+--proxysql-nodes=N				Number of ProxySQL nodes
+--proxysql-pxc-node=				Container name of one PXC node
+--number-of-nodes=N				Number of nodes when running with pxc
+--destroy-all					destroy all containers from running user
+--help						print usage
+```
 
 
 ## LXC useful commands:

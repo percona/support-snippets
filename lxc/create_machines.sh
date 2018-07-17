@@ -3,8 +3,9 @@
 usage () {
   echo "Usage: [ options ]"
   echo "Options:"
-  echo "--type=[pxc|proxysql|proxysql-pxc] 		Type of machine to deploy, currently support pxc, proxysql and proxysql-pxc"
-  echo "--name=						Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
+  echo "--type=[pxc|proxysql|proxysql-pxc|
+           standalone|replication] 			Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication"
+  echo "--name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[type]-[name]"
   echo "						such as marcelo.altmann-pxc-xxxxxx"
   echo "--proxysql-nodes=N				Number of ProxySQL nodes"
   echo "--proxysql-pxc-node=				Container name of one PXC node"
@@ -33,9 +34,13 @@ do
     --type )
       TYPE="$2"
       shift 2
-      if [ "$TYPE" != "pxc" ] && [ "$TYPE" != "proxysql" ] && [ "$TYPE" != "proxysql-pxc" ]; then
+      if [ "$TYPE" != "pxc" ] && 
+         [ "$TYPE" != "proxysql" ] && 
+         [ "$TYPE" != "proxysql-pxc" ] &&
+         [ "$TYPE" != "replication" ] &&
+         [ "$TYPE" != "standalone" ]; then
         echo "ERROR: Invalid --type passed" 
-	echo " Curently only supported types: pxc, proxysql"
+	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone"
         exit 1
       fi
     ;;
@@ -88,11 +93,33 @@ deploy_pxc()
   if [[ -z "$NAME" ]] ; then NAME=""; fi
   M_NAME="$MY_USER-$NAME-pxc"
   echo "starting pxc"
-  ./create_pxc.sh $M_NAME $NUMBER_OF_NODES
+  ./create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+}
+
+deploy_standalone()
+{
+  if [[ -z "$NUMBER_OF_NODES" ]] ; then NUMBER_OF_NODES=1; fi
+  if [[ -z "$NAME" ]] ; then NAME=""; fi
+  if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-standalone"; fi
+  echo "starting standalone"
+  ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+}
+deploy_replication()
+{
+  if [[ -z "$NUMBER_OF_NODES" ]] ; then NUMBER_OF_NODES=2; fi
+  if [[ -z "$NAME" ]] ; then NAME=""; fi
+  if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-replication"; fi
+
+  echo "starting standalone"
+  ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+  echo "starting replication"
+  ./create_replication.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
 }
 
 if [ "$TYPE" == "pxc" ]; then deploy_pxc;
 elif [ "$TYPE" == "proxysql" ]; then deploy_proxysql;
+elif [ "$TYPE" == "standalone" ]; then deploy_standalone;
+elif [ "$TYPE" == "replication" ]; then deploy_replication;
 elif [ "$TYPE" == "proxysql-pxc" ]; then
   deploy_pxc
   PROXY_PXC_NODE="$MY_USER-$NAME-pxc-1"

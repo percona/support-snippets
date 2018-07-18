@@ -5,13 +5,14 @@ usage () {
   echo "Options:"
   echo "--name=                         Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
   echo "--number-of-nodes=N             Number of nodes when running with pxc"
+  echo "--version=                      Which specific version should be deployed"
   echo "--help                          print usage"
 }
 
 # Check if we have a functional getopt(1)
 if ! getopt --test
   then
-  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,help --name="$(realpath "$0")" -- "$@")"
+  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,version:,help --name="$(realpath "$0")" -- "$@")"
   test $? -eq 0 || exit 1
   eval set -- "$go_out"
 fi
@@ -31,6 +32,10 @@ do
     ;;
     --number-of-nodes )
     NUMBER_OF_NODES="$2"
+    shift 2
+    ;;
+    --version )
+    VERSION=$2
     shift 2
     ;;
     --help )
@@ -53,7 +58,11 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
         sleep 1
     done
     lxc exec $NODE_NAME -- yum -y install http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm
-    lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat Percona-Server-server-57 
+    if [[ ! -z "$VERSION" ]]; then
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat $VERSION
+    else
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat Percona-Server-server-57
+    fi
     lxc exec $NODE_NAME -- iptables -F
     lxc exec $NODE_NAME -- setenforce 0
     lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql

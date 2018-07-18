@@ -12,17 +12,21 @@ lxc storage create marcelo.altmann dir source=/home/marcelo.altmann/lxc
 
 ## Usage
 ```
-./create_machines.sh
+./deploy_lxc
 Usage: [ options ]
 Options:
 --type=[pxc|proxysql|proxysql-pxc|
-           standalone|replication] 			Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication
+          standalone|replication]               Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication
 --name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[type]-[name]
 						such as marcelo.altmann-pxc-xxxxxx
 --proxysql-nodes=N				Number of ProxySQL nodes
 --proxysql-pxc-node=				Container name of one PXC node
 --number-of-nodes=N				Number of nodes when running with pxc
+--show-versions=MAJOR_RELEASE			Used in combination with --type, this option shows the available versions to be installed
+                                                Example --type=standalone --show-versions=5.7
+--version=FULL_VERSION				Full version you want to install, for example Percona-Server-server-57-5.7.21-20.1.el7.x86_64
 --destroy-all					destroy all containers from running user
+--list						list all containers from your user
 --help						print usage
 ```
 

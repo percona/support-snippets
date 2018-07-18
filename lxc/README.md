@@ -31,6 +31,58 @@ Options:
 ```
 
 
+## Deploy lxc examples
+
+### PXC Cluster
+
+* Create a 3 node cluster
+
+```
+# Replace 999999 by the #ISSUE number you are working with
+./deploy_lxc --type=pxc --name=999999
+```
+
+* Create a 5 node cluster
+
+```
+# Replace 999999 by the #ISSUE number you are working with
+./deploy_lxc --type=pxc --name=999999 --number-of-nodes=5
+```
+
+* List PXC versions
+
+```
+./deploy_lxc --type=pxc --show-versions=5.7
+```
+
+Example output:
+
+```
+./deploy_lxc --type=pxc --show-versions=5.7
+Percona-XtraDB-Cluster-56-5.6.20-25.7.888.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.12-26.16.1.rc1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.14-26.17.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.16-27.19.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.17-27.20.2.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.17-29.20.3.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.18-29.20.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.19-29.22.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.19-29.22.3.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.20-29.24.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.21-29.26.1.el7.x86_64
+Percona-XtraDB-Cluster-57-5.7.22-29.26.1.el7.x86_64
+```
+
+* Create PXC on specific version
+
+```
+# Replace 999999 by the #ISSUE number you are working with
+# Replace --version=Percona-XtraDB-Cluster-57-5.7.20-29.24.1.el7.x86_64 with the specific version you want to install
+./deploy_lxc --type=pxc --name=232025 --version=Percona-XtraDB-Cluster-57-5.7.20-29.24.1.el7.x86_64
+```
+
+
+
 ## LXC useful commands:
 
 `lxc list` - List all lxc containers

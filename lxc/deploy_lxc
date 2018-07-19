@@ -1,0 +1,220 @@
+#!/bin/bash
+# Dispay script usage details
+usage () {
+  echo "Usage: [ options ]"
+  echo "Options:"
+  echo "--type=[pxc|proxysql|proxysql-pxc|"
+  echo "          standalone|replication]               Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication"
+  echo "--name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[issue_nr]-[type]-[id]"
+  echo "						such as marcelo.altmann-123456-pxc-1"
+  echo "--proxysql-nodes=N				Number of ProxySQL nodes"
+  echo "--proxysql-pxc-node=				Container name of one PXC node"
+  echo "--number-of-nodes=N				Number of nodes when running with pxc"
+  echo "--show-versions=MAJOR_RELEASE			Used in combination with --type, this option shows the available versions to be installed"
+  echo "                                                Example --type=standalone --show-versions=5.7"
+  echo "--version=FULL_VERSION				Full version you want to install, for example Percona-Server-server-57-5.7.21-20.1.el7.x86_64"
+  echo "--list						list all containers from your user"
+  echo "--use=NAME                                      Connect into a specific container name"
+  echo "--start=NAME                                    Start a specific container name"
+  echo "--stop=NAME                                     Stop a specific container name"
+  echo "--stop-all                                      Stop all containers from running user"
+  echo "--destroy=NAME                                  Destroy a specific container name"
+  echo "--destroy-all					destroy all containers from running user"
+  echo "--help						print usage"
+}
+
+# Check if we have a functional getopt(1)
+if ! getopt --test
+  then
+  go_out="$(getopt --options=edv --longoptions=type:,number-of-nodes:,name:,proxysql-nodes:,proxysql-pxc-node:,show-versions:,version:,use:,start:,stop:,destroy:,stop-all,destroy-all,list,help --name="$(realpath "$0")" -- "$@")"
+  test $? -eq 0 || exit 1
+  eval set -- "$go_out"
+fi
+
+if [[ $go_out == " --" ]];then
+  usage
+  exit 1
+fi
+
+for arg
+do
+  case "$arg" in
+    -- ) shift; break;;
+    --type )
+      TYPE="$2"
+      shift 2
+      if [ "$TYPE" != "pxc" ] && 
+         [ "$TYPE" != "proxysql" ] && 
+         [ "$TYPE" != "proxysql-pxc" ] &&
+         [ "$TYPE" != "replication" ] &&
+         [ "$TYPE" != "standalone" ]; then
+        echo "ERROR: Invalid --type passed" 
+	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone"
+        exit 1
+      fi
+    ;;
+    --name )
+    NAME="$2"
+    shift 2
+    ;;
+    --number-of-nodes )
+    NUMBER_OF_NODES="$2"
+    shift 2
+    ;;
+    --proxysql-nodes )
+    PROXY_NUMBER_OF_NODES="$2"
+    shift 2
+    ;;
+    --proxysql-pxc-node )
+    PROXY_PXC_NODE="$2"
+    shift 2
+    ;;
+    --use )
+    TYPE='use'
+    CNAME=$2
+    shift 2
+    ;;
+    --start )
+    TYPE='start'
+    CNAME=$2
+    shift 2
+    ;;
+    --stop )
+    TYPE='stop'
+    CNAME=$2
+    shift 2
+    ;;
+    --destroy )
+    TYPE='destroy'
+    CNAME=$2
+    shift 2
+    ;;
+    --stop-all )
+    TYPE='stop-all'
+    shift
+    ;;
+    --destroy-all )
+    TYPE='destroy-all'
+    shift
+    ;;
+    --list )
+    TYPE='list'
+    shift
+    ;;
+    --show-versions )
+    SHOW_VERSIONS=$2
+    shift 2
+    ;;
+    --version)
+    VERSION=$2
+    shift 2
+    ;;
+    --help )
+    usage
+    exit 0
+    ;;
+  esac
+done
+
+#some standard vars
+MY_USER=$(echo $(whoami) | sed 's/\./-/')
+
+
+deploy_proxysql() {
+  if [[ -z "$PROXY_NUMBER_OF_NODES" ]] ; then PROXY_NUMBER_OF_NODES=1; fi
+
+  P_PROXY_PXC_NODE=""
+  if [[ ! -z "$PROXY_PXC_NODE" ]] ; then 
+    ./create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
+  else
+    ./create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
+  fi
+}
+
+deploy_pxc()
+{
+  if [[ -z "$NUMBER_OF_NODES" ]] ; then NUMBER_OF_NODES=3; fi
+
+  if [[ -z "$NAME" ]] ; then NAME=""; fi
+  M_NAME="$MY_USER-$NAME-pxc"
+  echo "starting pxc"
+  if [[ ! -z "$VERSION" ]]; then
+    ./create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+  else
+    ./create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+  fi
+}
+
+deploy_standalone()
+{
+  if [[ -z "$NUMBER_OF_NODES" ]] ; then NUMBER_OF_NODES=1; fi
+  if [[ -z "$NAME" ]] ; then NAME=""; fi
+  if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-standalone"; fi
+  echo "starting standalone"
+  if [[ ! -z "$VERSION" ]]; then
+     ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+  else
+     ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+  fi
+}
+deploy_replication()
+{
+  if [[ -z "$NUMBER_OF_NODES" ]] ; then NUMBER_OF_NODES=2; fi
+  if [[ -z "$NAME" ]] ; then NAME=""; fi
+  if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-replication"; fi
+
+  echo "starting standalone"
+  ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+  echo "starting replication"
+  ./create_replication.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
+}
+
+if [ ! -z "$SHOW_VERSIONS" ]; then
+  if [ "$TYPE" == "standalone" ]; then
+    curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+  elif [ "$TYPE" == "pxc" ]; then
+    curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Percona-XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+  else
+    echo "--show-versions is only available with --type=pxc or --type=standalone"
+    exit 1;
+  fi
+  exit 0
+elif [ "$TYPE" == "pxc" ]; then deploy_pxc;
+elif [ "$TYPE" == "proxysql" ]; then deploy_proxysql;
+elif [ "$TYPE" == "standalone" ]; then deploy_standalone;
+elif [ "$TYPE" == "replication" ]; then deploy_replication;
+elif [ "$TYPE" == "proxysql-pxc" ]; then
+  deploy_pxc
+  PROXY_PXC_NODE="$MY_USER-$NAME-pxc-1"
+  deploy_proxysql
+elif [ "$TYPE" == "use" ]; then
+  echo "Connecting to $CNAME"
+  lxc exec $CNAME /bin/bash
+elif [ "$TYPE" == "start" ]; then
+  echo "starting $CNAME"
+  lxc start $CNAME
+elif [ "$TYPE" == "stop" ]; then
+  echo "stoppping $CNAME"
+  lxc stop $CNAME
+elif [ "$TYPE" == "stop-all" ]; then
+  for c_name in $(lxc list -c n | grep $(whoami) | awk '{print $2}');
+  do
+    echo "stopping $c_name"
+    lxc stop $c_name
+  done
+elif [ "$TYPE" == "destroy" ]; then
+  echo "stopping $CNAME"
+  lxc stop $CNAME
+  echo "destroying $CNAME"
+  lxc delete $CNAME
+elif [ "$TYPE" == "destroy-all" ]; then
+  for c_name in $(lxc list -c n | grep $(whoami) | awk '{print $2}');
+  do
+    echo "stopping $c_name"
+    lxc stop $c_name
+    echo "destroying $c_name"
+    lxc	delete $c_name
+  done
+elif [ "$TYPE" == "list" ]; then
+  lxc list -c n,s,4,6 $(echo $MY_USER)
+fi

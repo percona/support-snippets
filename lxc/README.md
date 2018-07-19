@@ -25,8 +25,13 @@ Options:
 --show-versions=MAJOR_RELEASE			Used in combination with --type, this option shows the available versions to be installed
                                                 Example --type=standalone --show-versions=5.7
 --version=FULL_VERSION				Full version you want to install, for example Percona-Server-server-57-5.7.21-20.1.el7.x86_64
---destroy-all					destroy all containers from running user
 --list						list all containers from your user
+--use=NAME                                      Connect into a specific container name
+--start=NAME                                    Start a specific container name
+--stop=NAME                                     Stop a specific container name
+--stop-all                                      Stop all containers from running user
+--destroy=NAME                                  Destroy a specific container name
+--destroy-all					destroy all containers from running user
 --help						print usage
 ```
 

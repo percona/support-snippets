@@ -1,20 +1,19 @@
-# test
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(50)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(50)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(50)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(20)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(15)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(5)" &
-timeout 20 mysql -h127.0.0.1 -P49164 -umsandbox -pmsandbox -e "select sleep(5)" &
-date; p=$$; j=$(ps --no-headers -o pid --ppid=${p} |wc -l); timeout 9 bash -c "while [[ "${j}" -gt 0 ]]; do { sleep 0.5; x=(eval 'ps --no-headers -o pid --ppid=${p} |wc -l'); echo 'PID ${p} has ${j} (${x}) jobs'; } done; echo $j";  date;
+# Trigger based on Threads_Running on all nodes
 
-p=$$; date; timeout 15 bash -c "while [[ $(ps --no-headers -o pid --ppid=${p} |wc -l) -gt 3 ]]; do {  ps --no-headers -o pid --ppid=${p}|wc -l; sleep 0.5; } done;  ps --no-headers -o pid --ppid=${p} |wc -l"; date;
+```
+PTDEST=/tmp/pt/collected/`hostname`/
+mkdir -p $PTDEST;
+cd /tmp/pt;
+wget percona.com/get/pt-stalk https://raw.githubusercontent.com/percona/support-snippets/master/mysql/pt-stalk/pxc_trigger_all_nodes/pt-stalk-trigger_threads_running.sh;
+chmod +x pt*;
+rm /tmp/pt-stalk.trg.hosts;
+pt-stalk --host=127.0.0.1 --user=root --password=sekret --function=/tmp/pt/pt-stalk-trigger_threads_running.sh --variable=PXC_Threads_running --threshold=10 --iterations=2 --sleep=30 --dest=$PTDEST;
+```
 
+*To Test:*
 
-./pt-stalk  --host=127.0.0.1 --user=root --password=msandbox --function=./trg.sh --plugin=./plugin.sh --variable=PXC_Threads_running --threshold=25 --cycles=3 --interval=1 --iterations=10 --run-time=30 --sleep=90 --dest=./tmp --log=/var/log/pt-stalk.log --pid=./tmp/p.pid
+On a separate node:
 
-sudo ./pt-stalk  --host=127.0.0.1 --port=49164 --user=root --password=msandbox --function=./trg.sh --plugin=./plugin.sh --variable=PXC_Threads_running --threshold=25 --cycles=3 --interval=1 --iterations=10 --run-time=30 --sleep=90 --dest=./tmp --log=/var/log/pt-stalk.log --pid=./tmp/p.pid
-
-
-Now configure pt-stalk in daemon mode on all nodes using pt-stalk-threads-trigger.sh function and pt-stalk.perf.plugin plugin:
-sudo ./pt-stalk --daemonize --variable=threads --function=/tmp/pt/pt-stalk-threads-trigger.sh --threshold=100 --cycles=3 --iterations=4 --sleep=30 --dest=/tmp/pt/collected/`hostname`/ --log=/tmp/pt/collected/`hostname`/pt-stalk.log --plugin=/tmp/pt/pt-stalk.perf.plugin -- --user=root --password=<mysql-root-password>;
+```
+for i in {1..15}; do mysql -u root -psekret -e "SELECT SLEEP(10)" & done
+```

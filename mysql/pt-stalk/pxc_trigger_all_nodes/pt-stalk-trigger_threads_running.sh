@@ -1,11 +1,15 @@
 #!/bin/bash
 function trg_plugin() {
-  local pxc_hosts="127.0.0.1 10.0.1.2 10.0.1.3x";
+  if [[ ! -f /tmp/pt-stalk.trg.hosts ]]; then
+    echo "$(mysql ${EXT_ARGV} -BNe "SHOW GLOBAL STATUS LIKE 'wsrep_incoming_addresses'" | awk '{print $2}' | sed 's#,# #g')" > /tmp/pt-stalk.trg.hosts ;
+  fi
   local tmp_data="/tmp/pt-stalk.trg.dat";
   local tmp_log="/tmp/pt-stalk.trg.log";
   rm -f "${tmp_data}";
-  for h in ${pxc_hosts}; do {
-    mysql "${EXT_ARGV}" -h"${h}" -BNe "SHOW GLOBAL STATUS LIKE 'Threads_running'"  1>>"${tmp_data}"  2>>"${tmp_log}" &
+  for h in $(cat /tmp/pt-stalk.trg.hosts); do {
+    HOST="$(echo $h | awk -F':' '{print $1}')";
+    PORT="$(echo $h | awk -F':' '{print $2}')";
+    mysql ${EXT_ARGV} -h ${HOST} -P ${PORT} -BNe "SHOW GLOBAL STATUS LIKE 'Threads_running'"  1>>"${tmp_data}"  2>>"${tmp_log}" &
   } done;
   sleep 0.5;
   # if there are jobs still running or if there's no data collected...

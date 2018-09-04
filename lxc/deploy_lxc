@@ -49,7 +49,7 @@ do
          [ "$TYPE" != "replication" ] &&
          [ "$TYPE" != "standalone" ]; then
         echo "ERROR: Invalid --type passed" 
-	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone"
+	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone, replication"
         exit 1
       fi
     ;;
@@ -170,7 +170,7 @@ deploy_replication()
 }
 
 if [ ! -z "$SHOW_VERSIONS" ]; then
-  if [ "$TYPE" == "standalone" ]; then
+  if [ "$TYPE" == "standalone" ] || [ "$TYPE" == "replication" ]; then
     curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
   elif [ "$TYPE" == "pxc" ]; then
     curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Percona-XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'

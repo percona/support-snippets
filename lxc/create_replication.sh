@@ -4,7 +4,7 @@ usage () {
   echo "Usage: [ options ]"
   echo "Options:"
   echo "--name=                         Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
-  echo "--number-of-nodes=N             Number of nodes when running with pxc"
+  echo "--number-of-nodes=N             Number of nodes for replication servers"
   echo "--help                          print usage"
 }
 

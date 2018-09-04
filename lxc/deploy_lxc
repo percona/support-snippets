@@ -9,18 +9,18 @@ usage () {
   echo "						such as marcelo.altmann-123456-pxc-1"
   echo "--proxysql-nodes=N				Number of ProxySQL nodes"
   echo "--proxysql-pxc-node=				Container name of one PXC node"
-  echo "--number-of-nodes=N				Number of nodes when running with pxc"
+  echo "--number-of-nodes=N				Number of nodes when running with type=[pxc|replication|standalone]"
   echo "--show-versions=MAJOR_RELEASE			Used in combination with --type, this option shows the available versions to be installed"
   echo "                                                Example --type=standalone --show-versions=5.7"
   echo "--version=FULL_VERSION				Full version you want to install, for example Percona-Server-server-57-5.7.21-20.1.el7.x86_64"
-  echo "--list						list all containers from your user"
+  echo "--list						List all containers from your user"
   echo "--use=NAME                                      Connect into a specific container name"
   echo "--start=NAME                                    Start a specific container name"
   echo "--stop=NAME                                     Stop a specific container name"
   echo "--stop-all                                      Stop all containers from running user"
   echo "--destroy=NAME                                  Destroy a specific container name"
-  echo "--destroy-all					destroy all containers from running user"
-  echo "--help						print usage"
+  echo "--destroy-all					Destroy all containers from running user"
+  echo "--help						Print usage"
 }
 
 # Check if we have a functional getopt(1)
@@ -49,7 +49,7 @@ do
          [ "$TYPE" != "replication" ] &&
          [ "$TYPE" != "standalone" ]; then
         echo "ERROR: Invalid --type passed" 
-	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone"
+	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone, replication"
         exit 1
       fi
     ;;
@@ -170,7 +170,7 @@ deploy_replication()
 }
 
 if [ ! -z "$SHOW_VERSIONS" ]; then
-  if [ "$TYPE" == "standalone" ]; then
+  if [ "$TYPE" == "standalone" ] || [ "$TYPE" == "replication" ]; then
     curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
   elif [ "$TYPE" == "pxc" ]; then
     curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Percona-XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'

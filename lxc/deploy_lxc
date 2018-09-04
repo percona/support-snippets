@@ -125,9 +125,9 @@ deploy_proxysql() {
 
   P_PROXY_PXC_NODE=""
   if [[ ! -z "$PROXY_PXC_NODE" ]] ; then 
-    ./create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
   else
-    ./create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
   fi
 }
 
@@ -139,9 +139,9 @@ deploy_pxc()
   M_NAME="$MY_USER-$NAME-pxc"
   echo "starting pxc"
   if [[ ! -z "$VERSION" ]]; then
-    ./create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
   else
-    ./create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   fi
 }
 
@@ -152,9 +152,9 @@ deploy_standalone()
   if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-standalone"; fi
   echo "starting standalone"
   if [[ ! -z "$VERSION" ]]; then
-     ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+     $(dirname "$0")/create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
   else
-     ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+     $(dirname "$0")/create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   fi
 }
 deploy_replication()
@@ -164,9 +164,9 @@ deploy_replication()
   if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-replication"; fi
 
   echo "starting standalone"
-  ./create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+  $(dirname "$0")/create_standalone.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   echo "starting replication"
-  ./create_replication.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
+  $(dirname "$0")/create_replication.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
 }
 
 if [ ! -z "$SHOW_VERSIONS" ]; then

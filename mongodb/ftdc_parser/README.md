@@ -13,7 +13,7 @@ json
 - Repo:
 https://github.com/10gen/ftdc-utils
 
-###How to use:
+### How to use:
 
 Install ftdc utils using:
 `go get github.com/10gen/ftdc-utils/cmd/ftdc`

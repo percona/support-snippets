@@ -72,29 +72,46 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
         fi
         sleep 1
     done
-    if [ $FLAVOR -eq "ps" ];
-    then
+
+    if [[ $FLAVOR == "ps" ]]; then
       lxc exec $NODE_NAME -- yum -y install http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm
       if [[ ! -z "$VERSION" ]]; then
-        TO_INSTALL="$VERSION"
+        lxc exec $NODE_NAME -- yum -y install ${VERSION}
+        VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
       else
-        TO_INSTALL="Percona-Server-server-57"
+        lxc exec $NODE_NAME -- yum -y install Percona-Server-server-57
+        VERSION_ACRONYM="57"
       fi  
-    elif [[ $FLAVOR -eq "mysql" ]]; then
-      lxc exec $NODE_NAME -- yum -y install https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
-      lxc exec $NODE_NAME -- sed -i '/mysql80-community/{n;n;n;s/1/0/;}' /etc/yum.repos.d/mysql-community.repo
-      lxc exec $NODE_NAME -- sed -i '/mysql57-community/{n;n;n;s/0/1/;}' /etc/yum.repos.d/mysql-community.repo
-      TO_INSTALL="mysql-community-server"
+    elif [[ $FLAVOR == "mysql" ]]; then
+      if [[ ! -z "$VERSION" ]]; then
+        lxc exec $NODE_NAME -- yum -y install https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
+        VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}' | awk -F'.' '{print $1$2}' ) #55, 56, 57, 80
+        lxc exec $NODE_NAME -- yum -y --disablerepo=mysql80-community --enablerepo=mysql${VERSION_ACRONYM}-community install ${VERSION}
+      else
+        lxc exec $NODE_NAME -- yum -y install mysql-community-server
+        VERSION_ACRONYM=80
+      fi
     fi
-    lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat $TO_INSTALL
+
+    lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat 
     lxc exec $NODE_NAME -- iptables -F
     lxc exec $NODE_NAME -- setenforce 0
-    lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql
+
+
+
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ acronimo ${VERSION_ACRONYM}"
+    if [[ ${VERSION_ACRONYM} == "56" ]] || [[ ${VERSION_ACRONYM} == "55" ]]; then
+      lxc exec $NODE_NAME -- mysql_install_db --user=mysql
+    else
+      lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql
+    fi 
+
     if [[ $FLAVOR -eq "mysql" ]]; then
       lxc exec $NODE_NAME -- systemctl start mysqld
     else
       lxc exec $NODE_NAME -- systemctl start mysql
     fi
+
     lxc exec $NODE_NAME -- sh -c "cat << EOF > /etc/my.cnf
 [mysqld]
 datadir=/var/lib/mysql
@@ -106,9 +123,22 @@ symbolic-links=0
 log-error=/var/log/mysqld.log
 pid-file=/var/run/mysqld/mysqld.pid
 EOF"
+
+if [[ $VERSION_ACRONYM == "80" ]]; then #Mysql 8 does not support GRANT with IDENTIFIED
+    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'localhost' IDENTIFIED BY 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'%' = 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'localhost' = 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%';"
+    lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1';"
+    lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost';"
+else
     lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
+fi
 done
 
 

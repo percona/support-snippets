@@ -60,12 +60,18 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     lxc exec $NODE_NAME -- yum -y install http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm
     if [[ ! -z "$VERSION" ]]; then
       lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat $VERSION
+      VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
     else
       lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat Percona-XtraDB-Cluster-57
+      VERSION_ACRONYM="57"
     fi
     lxc exec $NODE_NAME -- iptables -F
     lxc exec $NODE_NAME -- setenforce 0
-    lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql
+    if [[ ${VERSION_ACRONYM} == "56" ]] || [[ ${VERSION_ACRONYM} == "55" ]]; then
+        lxc exec $NODE_NAME -- mysql_install_db --user=mysql
+    else
+        lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql
+    fi
     if [[ ! -z $IPS ]] ; then
         IPS="$IPS,$NODE_IP"
     else

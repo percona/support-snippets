@@ -152,9 +152,9 @@ deploy_pxc()
   M_NAME="$MY_USER-$NAME-pxc"
   echo "starting pxc"
   if [[ ! -z "$VERSION" ]]; then
-    $(dirname "$0")/create_pxc.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
   else
-    $(dirname "$0")/create_pxc.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   fi
 }
 

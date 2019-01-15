@@ -13,10 +13,10 @@ while true; do {
   loss=$(shuf -i 40-60 -n 1);
 
 
-  if [[ $((${RANDOM} % 3)) -eq 0 ]]; then {
+  if [[ $(RANDOM % 3) -eq 0 ]]; then {
     echo "$(date) will sleep for ${duration_s} seconds while adding ${latency}ms of latency and ${loss}% of packet loss"
-    tc qdisc add dev ${INTERFACE} root netem delay ${latency}ms loss ${loss}%;
-    sleep $duration_s
+    tc qdisc add dev ${INTERFACE} root netem delay "${latency}"ms loss "${loss}"%;
+    sleep "${duration_s}"
     tc qdisc del dev ${INTERFACE} root netem;
     echo "$(date) Done"
   } fi;

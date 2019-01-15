@@ -17,7 +17,7 @@ threshold=3
 interval=1;
 
 # How much to sleep after data collection is triggered by a stall
-sleep_time=1  ;
+sleep_time=1;
 
 # Where to log events
 log_file="${PTDEST}/stalled_process.log";

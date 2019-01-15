@@ -1,0 +1,30 @@
+#!/bin/bash
+# Persistent connection via bash, to be able to continue collection even if
+# max-allowed-connections reached
+
+# where to store collected data
+PTDEST="/tmp/for-percona/$(hostname)";
+
+# auth information for MySQL
+MYSQL="mysql -umsandbox -pmsandbox ";
+
+# number of days to retain data
+RETENTION=2;
+
+[ -d "${PTDEST}" ] || mkdir -p "${PTDEST}";
+(
+while true; do {
+  [ -f /tmp/exit-percona-monitor ] && echo "exiting loop (/tmp/exit-percona-monitor is there)" && break;
+  d=$(date +%F_%T |tr ":" "-");
+  for i in {1..30} ; do {
+    sleep 1;
+    ts=$(date +"TS %s %F %T");
+    echo "TEE ${PTDEST}/${d}-processlist; SELECT '${ts}' AS ''; SHOW PROCESSLIST\G NOTEE;";
+    echo "TEE ${PTDEST}/${d}-status; SHOW GLOBAL STATUS; SELECT '' AS 'Last ${i}';  NOTEE;"
+    if [[ $((i % 10)) -eq 0 ]]; then {
+        echo "TEE ${PTDEST}/${d}-${i}-innodb; SHOW ENGINE INNODB STATUS\G NOTEE;";
+    } fi;
+  } done;
+  find "${PTDEST}" -mtime +${RETENTION} -delete -print >> "${PTDEST}/purge.log";
+} done;
+) | ${MYSQL} # > "${PTDEST}/collect.log" 2>&1;

@@ -1,0 +1,57 @@
+#!/bin/bash
+# Perform an action through timeout(1) and trigger data collection if it actually times out
+
+# Where to store collected data
+PTDEST="/tmp/for-percona/$(hostname)";
+
+# Perform the action that we want to monitor for stalls;
+# do_action="mysql -uroot -psekret -e 'SELECT 1 FROM dual ' > /dev/null 2>&1";
+
+# A quick test of data collection can be done by setting do_action="sleep 4"
+do_action="echo 'fake action' && sleep 4";
+
+# Timeout period in seconds; can be fractional
+threshold=3
+
+# How often to run the action to be monitored for stalls
+interval=1;
+
+# How much to sleep after data collection is triggered by a stall
+sleep_time=1  ;
+
+# Where to log events
+log_file="${PTDEST}/stalled_process.log";
+
+[[ -d "${PTDEST}" ]] || mkdir -p "${PTDEST}"
+
+# Perform data collection; This could/should be customized depending on the case
+function do_data_collection() {
+  d=$(date +%F_%T |tr ":" "-");
+  echo "[$d] doing data collection"  >> "${log_file}";
+
+  # usually we would run something like
+  # pt-pmp, strace and perf all require root privileges to work correctly
+  # pt-pmp and perf require debug symbols to work correctly
+  # /usr/bin/pt-pmp --save-samples="${PTDEST}/$d-pmp.samples" > "${PTDEST}/$d-pmp";
+  # timeout 10 strace -f -s2048 -ttt -TT -o "${PTDEST}/$d-strace" -p $(pgrep -x mysqld);
+  # perf record -o"${PTDEST}/$d-perf.data" -g -F99 -p$(pgrep -x mysqld) -- sleep 60;
+  # perf script -i"${PTDEST}/$d-perf.data" > "${PTDEST}/$d-perf.script";
+}
+
+# Main loop; Stop it remotely with `touch /tmp/exit-stalls-monitor`
+function main() {
+  while true; do {
+    timeout ${threshold} bash -c "${do_action}";
+    result=$?;
+    if [[ "${result}" -gt 0 ]]; then {
+      do_data_collection;
+      sleep ${sleep_time};
+    } else {
+      sleep ${interval};
+    } fi;
+    [[ -f /tmp/exit-stalls-monitor ]] && echo "exiting loop (/tmp/exit-stalls-monitor is there)" && rm -f /tmp/exit-stalls-monitor && break;
+  } done;
+  exit 0;
+}
+
+main;

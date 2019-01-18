@@ -138,9 +138,9 @@ deploy_proxysql() {
 
   P_PROXY_PXC_NODE=""
   if [[ ! -z "$PROXY_PXC_NODE" ]] ; then 
-    $(dirname "$0")/create_proxysql.sh --flavor=$FLAVOR --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
   else
-    $(dirname "$0")/create_proxysql.sh --flavor=$FLAVOR --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
   fi
 }
 

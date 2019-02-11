@@ -74,7 +74,7 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     done
 
     if [[ $FLAVOR == "ps" ]]; then
-      lxc exec $NODE_NAME -- yum -y install http://www.percona.com/downloads/percona-release/redhat/0.1-6/percona-release-0.1-6.noarch.rpm
+      lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
       if [[ ! -z "$VERSION" ]]; then
         lxc exec $NODE_NAME -- yum -y install ${VERSION}
         VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80

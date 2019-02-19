@@ -5,6 +5,7 @@ usage () {
   echo "Options:"
   echo "--name=				Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
   echo "--pxc-node=			Name of pxc node to connect to"
+  echo "--replication-prefix=		Prefix of machines used for replication"
   echo "--number-of-nodes=N		Number of nodes when running with pxc"
   echo "--help				print usage"
 }
@@ -12,7 +13,7 @@ usage () {
 # Check if we have a functional getopt(1)
 if ! getopt --test
   then
-  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,pxc-node:,help --name="$(realpath "$0")" -- "$@")"
+  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,pxc-node:,replication-prefix:,help --name="$(realpath "$0")" -- "$@")"
   test $? -eq 0 || exit 1
   eval set -- "$go_out"
 fi
@@ -36,6 +37,10 @@ do
     ;;
     --pxc-node )
     PXC_NODE="$2"
+    shift 2
+    ;;
+    --replication-prefix )
+    REPLICATION_PREFIX="$2"
     shift 2
     ;;
     --help )
@@ -73,5 +78,18 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     lxc exec $NODE_NAME -- sed "s/CLUSTER_USERNAME='admin'/CLUSTER_USERNAME='root'/g" -i /etc/proxysql-admin.cnf
     lxc exec $NODE_NAME -- sed "s/CLUSTER_PASSWORD='admin'/CLUSTER_PASSWORD='sekret'/g" -i /etc/proxysql-admin.cnf
     lxc exec $NODE_NAME -- proxysql-admin --config-file=/etc/proxysql-admin.cnf --without-check-monitor-user --without-cluster-app-user --syncusers --enable
+  elif [[ ! -z "$REPLICATION_PREFIX" ]]; then
+    for node_ip in $( $(dirname "$0")/deploy_lxc --list | grep $REPLICATION_PREFIX | awk '{print $6}');
+    do
+       lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "INSERT INTO mysql_servers (hostgroup_id, hostname) VALUES (11, '$node_ip');"
+    done
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "INSERT INTO mysql_replication_hostgroups (writer_hostgroup, reader_hostgroup) VALUES (10, 11); LOAD MYSQL SERVERS TO RUNTIME; SAVE MYSQL SERVERS TO DISK;"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "UPDATE global_variables SET variable_value='root' WHERE variable_name='mysql-monitor_username'"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "UPDATE global_variables SET variable_value='sekret' WHERE variable_name='mysql-monitor_password'"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "LOAD MYSQL VARIABLES TO RUNTIME; SAVE MYSQL VARIABLES TO DISK"
+    lxc exec $NODE_NAME -- sed "s/CLUSTER_HOSTNAME='localhost'/CLUSTER_HOSTNAME='$node_ip'/g" -i /etc/proxysql-admin.cnf
+    lxc exec $NODE_NAME -- sed "s/CLUSTER_USERNAME='admin'/CLUSTER_USERNAME='root'/g" -i /etc/proxysql-admin.cnf
+    lxc exec $NODE_NAME -- sed "s/CLUSTER_PASSWORD='admin'/CLUSTER_PASSWORD='sekret'/g" -i /etc/proxysql-admin.cnf
+    lxc exec $NODE_NAME -- proxysql-admin --config-file=/etc/proxysql-admin.cnf --syncusers
   fi
 done

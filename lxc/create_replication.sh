@@ -63,6 +63,11 @@ log-bin
 server-id=$i
 report_host=$NODE_IP
 EOF"
+  if [[ $i -ne "1" ]] ; then
+    lxc exec $NODE_NAME -- sh -c "cat << EOF >> /etc/my.cnf
+read_only
+EOF"
+  fi
   if [[ $FLAVOR -eq "mysql" ]]; then
     lxc exec $NODE_NAME -- systemctl restart mysqld
   else

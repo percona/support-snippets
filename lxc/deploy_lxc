@@ -5,7 +5,8 @@ usage () {
   echo "Options:"
   echo "--flavor=[ps|mysql]				Which flavor of mysql to install"
   echo "--type=[pxc|proxysql|proxysql-pxc|"
-  echo "          standalone|replication]               Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone and replication"
+  echo "          standalone|replication|"
+  echo "          proxysql-replication]                 Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone, replication, proxysql-replication"
   echo "--name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[issue_nr]-[type]-[id]"
   echo "						such as marcelo.altmann-123456-pxc-1"
   echo "--proxysql-nodes=N				Number of ProxySQL nodes"
@@ -57,9 +58,10 @@ do
          [ "$TYPE" != "proxysql" ] && 
          [ "$TYPE" != "proxysql-pxc" ] &&
          [ "$TYPE" != "replication" ] &&
+         [ "$TYPE" != "proxysql-replication" ] &&
          [ "$TYPE" != "standalone" ]; then
         echo "ERROR: Invalid --type passed" 
-	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone, replication"
+	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone, replication and proxysql-replication"
         exit 1
       fi
     ;;
@@ -136,9 +138,10 @@ fi
 deploy_proxysql() {
   if [[ -z "$PROXY_NUMBER_OF_NODES" ]] ; then PROXY_NUMBER_OF_NODES=1; fi
 
-  P_PROXY_PXC_NODE=""
   if [[ ! -z "$PROXY_PXC_NODE" ]] ; then 
-    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE "
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE"
+  elif [[ ! -z "$PROXY_REPLICATION_PREFIX" ]]; then
+    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --replication-prefix="$PROXY_REPLICATION_PREFIX"
   else
     $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
   fi
@@ -207,6 +210,10 @@ elif [ "$TYPE" == "replication" ]; then deploy_replication;
 elif [ "$TYPE" == "proxysql-pxc" ]; then
   deploy_pxc
   PROXY_PXC_NODE="$MY_USER-$NAME-pxc-1"
+  deploy_proxysql
+elif [ "$TYPE" == "proxysql-replication" ]; then
+  deploy_replication
+  PROXY_REPLICATION_PREFIX="$MY_USER-$NAME-replication-"
   deploy_proxysql
 elif [ "$TYPE" == "use" ]; then
   echo "Connecting to $CNAME"

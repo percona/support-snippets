@@ -55,6 +55,7 @@ fi
 for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
   NODE_NAME="$NAME-$i"
   lxc init centos-7 $NODE_NAME -s $(whoami)
+  lxc config set $NODE_NAME security.privileged true
   lxc start $NODE_NAME
   for (( c=1; c<=20; c++ ))do
     NODE_IP=$(lxc exec $NODE_NAME -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')

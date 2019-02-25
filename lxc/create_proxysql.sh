@@ -73,12 +73,13 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
   lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
   lxc exec $NODE_NAME -- yum -y install proxysql Percona-Server-client-57 which
   lxc exec $NODE_NAME -- systemctl start proxysql
+  sleep 2
   if [[ ! -z "$PXC_NODE" ]]; then
     PXC_IP=$(lxc exec $PXC_NODE -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
     lxc exec $NODE_NAME -- sed "s/CLUSTER_HOSTNAME='localhost'/CLUSTER_HOSTNAME='$PXC_IP'/g" -i /etc/proxysql-admin.cnf
     lxc exec $NODE_NAME -- sed "s/CLUSTER_USERNAME='admin'/CLUSTER_USERNAME='root'/g" -i /etc/proxysql-admin.cnf
     lxc exec $NODE_NAME -- sed "s/CLUSTER_PASSWORD='admin'/CLUSTER_PASSWORD='sekret'/g" -i /etc/proxysql-admin.cnf
-    lxc exec $NODE_NAME -- proxysql-admin --config-file=/etc/proxysql-admin.cnf --without-check-monitor-user --without-cluster-app-user --syncusers --enable
+    lxc exec $NODE_NAME -- proxysql-admin --config-file=/etc/proxysql-admin.cnf --use-existing-monitor-password --without-cluster-app-user --syncusers --enable
   elif [[ ! -z "$REPLICATION_PREFIX" ]]; then
     for node_ip in $( $(dirname "$0")/deploy_lxc --list | grep $REPLICATION_PREFIX | awk '{print $6}');
     do

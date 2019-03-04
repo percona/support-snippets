@@ -84,8 +84,8 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
         VERSION_ACRONYM="57"
       fi  
     elif [[ $FLAVOR == "mysql" ]]; then
+      lxc exec $NODE_NAME -- yum -y install https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
       if [[ ! -z "$VERSION" ]]; then
-        lxc exec $NODE_NAME -- yum -y install https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
         VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}' | awk -F'.' '{print $1$2}' ) #55, 56, 57, 80
         lxc exec $NODE_NAME -- yum -y --disablerepo=mysql80-community --enablerepo=mysql${VERSION_ACRONYM}-community install ${VERSION}
       else
@@ -127,14 +127,12 @@ EOF"
 
 if [[ $VERSION_ACRONYM == "80" ]]; then #Mysql 8 does not support GRANT with IDENTIFIED
     lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'localhost' IDENTIFIED BY 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'%' = 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'localhost' = 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%';"
+    lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY 'sekret';"
+    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1';"
-    lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost';"
+    lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'localhost' = 'sekret';"
 else
     lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
     lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"

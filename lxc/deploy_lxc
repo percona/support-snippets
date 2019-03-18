@@ -260,11 +260,12 @@ fi
 
 if [ "$TYPE" == "standalone" ] && [ "$ENTER_NODE_NUMBER" == "1" ]; then
   M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
-  echo $M_NAME
+  echo "Entering ${M_NAME}"
   $(dirname "$0")/deploy_lxc --use=${M_NAME}
 elif [ "$TYPE" == "pxc" ] || [ "$TYPE" == "replication" ]; then
   if [ ! -z "$ENTER_NODE_NUMBER" ]; then
     M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
+    echo "Entering ${M_NAME}" 
     $(dirname "$0")/deploy_lxc --use=${M_NAME} 
   fi
 fi

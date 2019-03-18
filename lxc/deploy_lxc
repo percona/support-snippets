@@ -9,6 +9,8 @@ usage () {
   echo "          proxysql-replication]                 Type of machine to deploy, currently support pxc, proxysql, proxysql-pxc, standalone, replication, proxysql-replication"
   echo "--name=						Identifier of this machine, such as #Issue Number. Machines are identified by [user.name]-[issue_nr]-[type]-[id]"
   echo "						such as marcelo.altmann-123456-pxc-1"
+  echo "--enter						If type={standalone}, it will enter the created node"
+  echo "--enter-node=N					If type={pxc,replication}, it will enter node number N"
   echo "--proxysql-nodes=N				Number of ProxySQL nodes"
   echo "--proxysql-pxc-node=				Container name of one PXC node"
   echo "--number-of-nodes=N				Number of nodes when running with type=[pxc|replication|standalone]"
@@ -28,7 +30,7 @@ usage () {
 # Check if we have a functional getopt(1)
 if ! getopt --test
   then
-  go_out="$(getopt --options=edv --longoptions=flavor:,type:,number-of-nodes:,name:,proxysql-nodes:,proxysql-pxc-node:,show-versions:,version:,use:,start:,stop:,destroy:,stop-all,destroy-all,list,help --name="$(realpath "$0")" -- "$@")"
+  go_out="$(getopt --options=edv --longoptions=flavor:,type:,number-of-nodes:,name:,enter,enter-node:,proxysql-nodes:,proxysql-pxc-node:,show-versions:,version:,use:,start:,stop:,destroy:,stop-all,destroy-all,list,help --name="$(realpath "$0")" -- "$@")"
   test $? -eq 0 || exit 1
   eval set -- "$go_out"
 fi
@@ -67,6 +69,14 @@ do
     ;;
     --name )
     NAME="$2"
+    shift 2
+    ;;
+    --enter )
+    ENTER_NODE_NUMBER='1'
+    shift
+    ;;
+    --enter-node )
+    ENTER_NODE_NUMBER="$2"
     shift 2
     ;;
     --number-of-nodes )
@@ -246,3 +256,18 @@ elif [ "$TYPE" == "destroy-all" ]; then
 elif [ "$TYPE" == "list" ]; then
   lxc list -c n,s,4,6 $(echo $MY_USER)
 fi
+
+
+if [ "$TYPE" == "standalone" ] && [ "$ENTER_NODE_NUMBER" == "1" ]; then
+  M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
+  echo $M_NAME
+  $(dirname "$0")/deploy_lxc --use=${M_NAME}
+elif [ "$TYPE" == "pxc" ] || [ "$TYPE" == "replication" ]; then
+  if [ ! -z "$ENTER_NODE_NUMBER" ]; then
+    M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
+    $(dirname "$0")/deploy_lxc --use=${M_NAME} 
+  fi
+fi
+
+
+

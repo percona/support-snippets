@@ -1,0 +1,7 @@
+PTDEST=/tmp/pt/collected/`hostname`/
+mkdir -p $PTDEST;
+cd /tmp/pt;
+wget percona.com/get/pt-summary percona.com/get/pt-mongodb-summary;
+chmod +x pt*;
+sudo ./pt-summary > $PTDEST/pt-summary.out;
+sudo ./pt-mongodb-summary host:port -- --user=<mongodb-user> --password=<mongodb-root-password> -a <auth-db> > $PTDEST/pt-mongodb-summary.out;

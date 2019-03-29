@@ -55,28 +55,28 @@ then
   FLAVOR="ps"
 fi
 
-for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
+for (( i=1; i<=NUMBER_OF_NODES; i++ ))do
   NODE_NAME="$NAME-$i"
-  NODE_IP=$(lxc exec $NODE_NAME -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
-  lxc exec $NODE_NAME -- sh -c "cat << EOF >> /etc/my.cnf
+  NODE_IP=$(lxc exec "$NODE_NAME" -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
+  lxc exec "$NODE_NAME" -- sh -c "cat << EOF >> /etc/my.cnf
 log-bin
 server-id=$i
 report_host=$NODE_IP
 EOF"
   if [[ $i -ne "1" ]] ; then
-    lxc exec $NODE_NAME -- sh -c "cat << EOF >> /etc/my.cnf
+    lxc exec "$NODE_NAME" -- sh -c "cat << EOF >> /etc/my.cnf
 read_only
 EOF"
   fi
-  if [[ $FLAVOR -eq "mysql" ]]; then
-    lxc exec $NODE_NAME -- systemctl restart mysqld
+  if [[ $FLAVOR == "mysql" ]]; then
+    lxc exec "$NODE_NAME" -- systemctl restart mysqld
   else
-    lxc exec $NODE_NAME -- systemctl restart mysql
+    lxc exec "$NODE_NAME" -- systemctl restart mysql
   fi
   if [[ $i -eq "1" ]] ; then
     MASTER_IP=$NODE_IP
   else
-    lxc exec $NODE_NAME -- mysql -u root -psekret -e "CHANGE MASTER TO MASTER_HOST='$MASTER_IP', MASTER_USER='root', MASTER_PASSWORD='sekret'; START SLAVE"
+    lxc exec "$NODE_NAME" -- mysql -u root -psekret -e "CHANGE MASTER TO MASTER_HOST='$MASTER_IP', MASTER_USER='root', MASTER_PASSWORD='sekret'; START SLAVE"
   fi
 done
 

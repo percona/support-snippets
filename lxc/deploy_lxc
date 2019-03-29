@@ -56,13 +56,13 @@ do
     --type )
       TYPE="$2"
       shift 2
-      if [ "$TYPE" != "pxc" ] && 
-         [ "$TYPE" != "proxysql" ] && 
+      if [ "$TYPE" != "pxc" ] &&
+         [ "$TYPE" != "proxysql" ] &&
          [ "$TYPE" != "proxysql-pxc" ] &&
          [ "$TYPE" != "replication" ] &&
          [ "$TYPE" != "proxysql-replication" ] &&
          [ "$TYPE" != "standalone" ]; then
-        echo "ERROR: Invalid --type passed" 
+        echo "ERROR: Invalid --type passed"
 	echo " Curently only supported types: pxc, proxysql, proxysql-pxc, standalone, replication and proxysql-replication"
         exit 1
       fi
@@ -139,7 +139,7 @@ do
 done
 
 #some standard vars
-MY_USER=$(echo $(whoami) | sed 's/\./-/')
+MY_USER=$(whoami | sed 's/\./-/')
 if [ -z "$FLAVOR" ];
 then
   FLAVOR="ps"
@@ -148,12 +148,12 @@ fi
 deploy_proxysql() {
   if [[ -z "$PROXY_NUMBER_OF_NODES" ]] ; then PROXY_NUMBER_OF_NODES=1; fi
 
-  if [[ ! -z "$PROXY_PXC_NODE" ]] ; then 
-    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE"
-  elif [[ ! -z "$PROXY_REPLICATION_PREFIX" ]]; then
-    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --replication-prefix="$PROXY_REPLICATION_PREFIX"
+  if [[ -n "$PROXY_PXC_NODE" ]] ; then
+    "$(dirname "$0")"/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --pxc-node="$PROXY_PXC_NODE"
+  elif [[ -n "$PROXY_REPLICATION_PREFIX" ]]; then
+    "$(dirname "$0")"/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES --replication-prefix="$PROXY_REPLICATION_PREFIX"
   else
-    $(dirname "$0")/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
+    "$(dirname "$0")"/create_proxysql.sh --name="$MY_USER-$NAME-proxysql" --number-of-nodes=$PROXY_NUMBER_OF_NODES
   fi
 }
 
@@ -164,10 +164,10 @@ deploy_pxc()
   if [[ -z "$NAME" ]] ; then NAME=""; fi
   M_NAME="$MY_USER-$NAME-pxc"
   echo "starting pxc"
-  if [[ ! -z "$VERSION" ]]; then
-    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+  if [[ -n "$VERSION" ]]; then
+    "$(dirname "$0")"/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version="$VERSION"
   else
-    $(dirname "$0")/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+    "$(dirname "$0")"/create_pxc.sh --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   fi
 }
 
@@ -177,10 +177,10 @@ deploy_standalone()
   if [[ -z "$NAME" ]] ; then NAME=""; fi
   if [[ -z "$M_NAME" ]] ; then M_NAME="$MY_USER-$NAME-standalone"; fi
   echo "starting standalone"
-  if [[ ! -z "$VERSION" ]]; then
-     $(dirname "$0")/create_standalone.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=$VERSION
+  if [[ -n "$VERSION" ]]; then
+     "$(dirname "$0")"/create_standalone.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version="$VERSION"
   else
-     $(dirname "$0")/create_standalone.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
+     "$(dirname "$0")"/create_standalone.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
   fi
 }
 deploy_replication()
@@ -191,22 +191,22 @@ deploy_replication()
 
   deploy_standalone
   echo "starting replication"
-  $(dirname "$0")/create_replication.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
+  "$(dirname "$0")"/create_replication.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES
 }
 
-if [ ! -z "$SHOW_VERSIONS" ]; then
-  if [ "$FLAVOR" == "mysql" ]; then 
+if [ -n "$SHOW_VERSIONS" ]; then
+  if [ "$FLAVOR" == "mysql" ]; then
     if [ "$TYPE" == "standalone" ]; then
-      curl -s http://repo.mysql.com/yum/mysql-${SHOW_VERSIONS}-community/el/7/x86_64/ | grep 'community-server' | awk -F'HREF=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}' | sort -n
+      curl -s http://repo.mysql.com/yum/mysql-"${SHOW_VERSIONS}"-community/el/7/x86_64/ | grep 'community-server' | awk -F'HREF=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}' | sort -n
     else
       echo "--show-versions with --flavor=mysql is only available with --type=standalone"
       exit 1;
     fi
   elif [ "$FLAVOR" == "ps" ]; then
     if [ "$TYPE" == "standalone" ] || [ "$TYPE" == "replication" ]; then
-      curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+      curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep "$SHOW_VERSIONS" | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
     elif [ "$TYPE" == "pxc" ]; then
-      curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+      curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep "$SHOW_VERSIONS" | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
     else
       echo "--show-versions is only available with --type=pxc or --type=standalone"
       exit 1;
@@ -227,48 +227,45 @@ elif [ "$TYPE" == "proxysql-replication" ]; then
   deploy_proxysql
 elif [ "$TYPE" == "use" ]; then
   echo "Connecting to $CNAME"
-  lxc exec $CNAME /bin/bash
+  lxc exec "$CNAME" /bin/bash
 elif [ "$TYPE" == "start" ]; then
   echo "starting $CNAME"
-  lxc start $CNAME
+  lxc start "$CNAME"
 elif [ "$TYPE" == "stop" ]; then
   echo "stoppping $CNAME"
-  lxc stop $CNAME
+  lxc stop "$CNAME"
 elif [ "$TYPE" == "stop-all" ]; then
-  for c_name in $(lxc list -c n | grep $(whoami) | awk '{print $2}');
+  for c_name in $(lxc list -c n | grep "$(whoami)" | awk '{print $2}');
   do
     echo "stopping $c_name"
-    lxc stop $c_name
+    lxc stop "$c_name"
   done
 elif [ "$TYPE" == "destroy" ]; then
   echo "stopping $CNAME"
-  lxc stop $CNAME
+  lxc stop "$CNAME"
   echo "destroying $CNAME"
-  lxc delete $CNAME
+  lxc delete "$CNAME"
 elif [ "$TYPE" == "destroy-all" ]; then
-  for c_name in $(lxc list -c n | grep $(whoami) | awk '{print $2}');
+  for c_name in $(lxc list -c n | grep "$(whoami)" | awk '{print $2}');
   do
     echo "stopping $c_name"
-    lxc stop $c_name
+    lxc stop "$c_name"
     echo "destroying $c_name"
-    lxc	delete $c_name
+    lxc	delete "$c_name"
   done
 elif [ "$TYPE" == "list" ]; then
-  lxc list -c n,s,4,6 $(echo $MY_USER)
+  lxc list -c n,s,4,6 "$MY_USER"
 fi
 
 
 if [ "$TYPE" == "standalone" ] && [ "$ENTER_NODE_NUMBER" == "1" ]; then
   M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
   echo "Entering ${M_NAME}"
-  $(dirname "$0")/deploy_lxc --use=${M_NAME}
+  "$(dirname "$0")"/deploy_lxc --use="${M_NAME}"
 elif [ "$TYPE" == "pxc" ] || [ "$TYPE" == "replication" ]; then
-  if [ ! -z "$ENTER_NODE_NUMBER" ]; then
+  if [ -n "$ENTER_NODE_NUMBER" ]; then
     M_NAME=${M_NAME}-${ENTER_NODE_NUMBER}
-    echo "Entering ${M_NAME}" 
-    $(dirname "$0")/deploy_lxc --use=${M_NAME} 
+    echo "Entering ${M_NAME}"
+    "$(dirname "$0")"/deploy_lxc --use="${M_NAME}"
   fi
 fi
-
-
-

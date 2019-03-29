@@ -45,35 +45,35 @@ do
   esac
 done
 
-for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
+for (( i=1; i<=NUMBER_OF_NODES; i++ ))do
     NODE_NAME="$NAME-$i"
-    lxc init centos-7 $NODE_NAME -s $(whoami)
-    lxc config set $NODE_NAME security.privileged true
-    lxc start $NODE_NAME
+    lxc init centos-7 "$NODE_NAME" -s "$(whoami)"
+    lxc config set "$NODE_NAME" security.privileged true
+    lxc start "$NODE_NAME"
     for (( c=1; c<=20; c++ ))do
-        NODE_IP=$(lxc exec $NODE_NAME -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
+        NODE_IP=$(lxc exec "$NODE_NAME" -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
         #echo "NODEIP: $NODE_IP"
         if [[ -n $NODE_IP ]] ; then
             break;
         fi
         sleep 1
     done
-    lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
-    if [[ ! -z "$VERSION" ]]; then
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat $VERSION
-      VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
+    lxc exec "$NODE_NAME" -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
+    if [[ -n "$VERSION" ]]; then
+      lxc exec "$NODE_NAME" -- yum -y install tar gdb strace vim qpress socat "$VERSION"
+      VERSION_ACRONYM=$( echo "${VERSION}" | awk -F'-' '{print $4}') #55, 56, 57, 80
     else
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat Percona-XtraDB-Cluster-57
+      lxc exec "$NODE_NAME" -- yum -y install tar gdb strace vim qpress socat Percona-XtraDB-Cluster-57
       VERSION_ACRONYM="57"
     fi
-    lxc exec $NODE_NAME -- iptables -F
-    lxc exec $NODE_NAME -- setenforce 0
+    lxc exec "$NODE_NAME" -- iptables -F
+    lxc exec "$NODE_NAME" -- setenforce 0
     if [[ ${VERSION_ACRONYM} == "56" ]] || [[ ${VERSION_ACRONYM} == "55" ]]; then
-        lxc exec $NODE_NAME -- mysql_install_db --user=mysql
+        lxc exec "$NODE_NAME" -- mysql_install_db --user=mysql
     else
-        lxc exec $NODE_NAME -- mysqld --initialize-insecure --user=mysql
+        lxc exec "$NODE_NAME" -- mysqld --initialize-insecure --user=mysql
     fi
-    if [[ ! -z $IPS ]] ; then
+    if [[ -n $IPS ]] ; then
         IPS="$IPS,$NODE_IP"
     else
         IPS="$NODE_IP"
@@ -81,10 +81,10 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
 done
 
 
-for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
+for (( i=1; i<=NUMBER_OF_NODES; i++ ))do
 NODE_NAME="$NAME-$i"
-NODE_IP=$(lxc exec $NODE_NAME -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
-lxc exec $NODE_NAME -- sh -c "cat << EOF > /etc/my.cnf
+NODE_IP=$(lxc exec "$NODE_NAME" -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
+lxc exec "$NODE_NAME" -- sh -c "cat << EOF > /etc/my.cnf
 [mysql]
 port                                = 3306
 socket                              = /var/lib/mysql/mysql.sock
@@ -141,13 +141,13 @@ EOF"
 
 if [[ $i -eq 1 ]]
 then
-    lxc exec $NODE_NAME -- systemctl start mysql@bootstrap
+    lxc exec "$NODE_NAME" -- systemctl start mysql@bootstrap
 
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
+    lxc exec "$NODE_NAME" -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
+    lxc exec "$NODE_NAME" -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
+    lxc exec "$NODE_NAME" -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
 else
-    lxc exec $NODE_NAME -- systemctl start mysql
+    lxc exec "$NODE_NAME" -- systemctl start mysql
 fi
 done
 

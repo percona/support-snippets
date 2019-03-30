@@ -26,8 +26,8 @@ sudo ./pt-stalk --daemonize --dest=$PTDEST --pid=/tmp/pt/stalk.pid --log=/tmp/pt
 ```
 
 ```
-# pt-stalk-seconds-behind-master.sh
-# Adjust threshold to make pt-stalk trigger when it reaches this value
+# pt-stalk-history-list-trigger.sh
+# Adjust the --threshold parameter to trigger pt-stalk when it reaches this value
 PT_STALK_PLUGIN='pt-stalk-history-list-trigger.sh'
 PTDEST=/tmp/pt/collected/`hostname`/
 mkdir -p $PTDEST;

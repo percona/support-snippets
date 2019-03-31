@@ -13,26 +13,21 @@
 # The script will work on both Linux and MacOS (in-file substitution is
 # resolved differently in both).
 #
-# To run, simply execute as `./pt_mextify_all path_to_samples`
-
+# To run, simply execute as `./pt_mext_all path_to_samples`
 
 # Constants:
-
 # If we have a first parameter, assume it's the path to samples directory
 # If not, use current working directory
 readonly TARGET_DIR="${1:-`pwd`}"
 
-
-# Functions:
-
-pt_mextify_all_linux(){
+pt_mext_all_linux(){
   for mext_file in $(ls $TARGET_DIR/*-mysqladmin); do {
     echo $mext_file.mext
     cat $mext_file | sed -e '/\-\-\-\-\-BEGIN\ PUBLIC\ KEY/,+9d' | pt-mext -r -- cat - > $mext_file.mext
   } done;
 }
 
-pt_mextify_all_macos(){
+pt_mext_all_macos(){
   for mext_file in $(ls $TARGET_DIR/*-mysqladmin); do {
     echo $mext_file.mext
     perl -0777 -i.original -pe 's/\n\| Rsa_public_key.*?-----END PUBLIC KEY-----\n \|//igs' $mext_file
@@ -40,15 +35,14 @@ pt_mextify_all_macos(){
   } done;
 }
 
-
 main() {
   # Check if we are running in Linux or MacOS and run appropriate function
   if [ `uname -s` == "Linux" ]; then
     #echo "DEBUG: Linux detected"
-    pt_mextify_all_linux
+    pt_mext_all_linux
   elif [ `uname -s` == "Darwin" ]; then
     #echo "DEBUG: MacOS detected"
-    pt_mextify_all_macos
+    pt_mext_all_macos
   else
     echo "ERROR: unsupported OS" `uname -s`
     exit 1

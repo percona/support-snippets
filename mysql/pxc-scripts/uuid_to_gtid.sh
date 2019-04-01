@@ -11,10 +11,10 @@ for i in $1; do
 	arr+=($i); 
 done
 
-a1=$(printf '%x\n' $((0xFFFFFFFF - 0x${arr[0]})))
-a2=$(printf '%x\n' $((0xFFFF - 0x${arr[1]})))
-a3=$(printf '%x\n' $((0xFFFF - 0x${arr[2]})))
-a4=$(printf '%x\n' $((0xFFFF - 0x${arr[3]})))
-a5=$(printf '%x\n' $((0xFFFFFFFFFFFF - 0x${arr[4]})))
+a1=$(printf '%x' $((0xFFFFFFFF - 0x${arr[0]})))
+a2=$(printf '%x' $((0xFFFF - 0x${arr[1]})))
+a3=$(printf '%x' $((0xFFFF - 0x${arr[2]})))
+a4=$(printf '%x' $((0xFFFF - 0x${arr[3]})))
+a5=$(printf '%x' $((0xFFFFFFFFFFFF - 0x${arr[4]})))
 
 echo $a1-$a2-$a3-$a4-$a5|tr '[:upper:]' '[:lower:]'

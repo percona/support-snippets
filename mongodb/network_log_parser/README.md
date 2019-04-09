@@ -41,4 +41,4 @@ timestamp;open connections;opened;closed
 (...)
 ```
 It could be used imported into a spreadsheet to generate a graph like the following:
-![Network connections graph example](https://github.com/percona/support-snippets/blob/mongodb-network-log-parser/mongodb/network_log_parser/sample.png)
+![Network connections graph example](https://github.com/percona/support-snippets/blob/master/mongodb/network_log_parser/sample.png)

@@ -1,5 +1,10 @@
 #!/bin/bash
-
+################################################################################
+#####
+##### Test file for plugin ptosc_plugin_rename_fk
+#####   This is a very simple test file intented only to avoid repetitive tasks.
+#####   It will probably be replaced for a real test suit in the future
+################################################################################
 MD5TOOL=`which md5sum`
 MYSQL_CLI=`which mysql`
 BASE_FOLDER=/opt/ptools

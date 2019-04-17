@@ -1,7 +1,7 @@
 package pt_online_schema_change_plugin;
 
-use Data::Dumper;
 use strict;
+# use Data::Dumper;
 
 my $table_name;
 my $executed = 0;
@@ -131,10 +131,6 @@ sub change_fk {
 
       # This line will effectively execute the SQL to rename (DROP and ADD) the FK's
       $dbh->do($sql_fk);
-   
-}
-
-sub test {
    
 }
 

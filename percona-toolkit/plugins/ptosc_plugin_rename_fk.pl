@@ -1,9 +1,12 @@
 package pt_online_schema_change_plugin;
 
+use Data::Dumper;
 use strict;
 
 my $table_name;
-my $table_fks = {};
+my $executed = 0;
+my $OLD_table_fks = {};
+
 
 sub get_fks {
    my ( $self, $ddl, $opts ) = @_;
@@ -59,40 +62,80 @@ sub before_create_new_table {
    my $fks = get_fks($self, $row->[1]);
 
    while (my ($key, $val) = each (%$fks)) {
-      $table_fks->{"$key"} = {ddl => $val->{'ddl'}};
+      # print Dumper(\$val);
+      $OLD_table_fks->{"$key"} = {
+         name => $val->{'name'},
+         colnames => $val->{'colnames'}
+      };
    }
 }
 
 sub after_drop_old_table {
-   # This is used for DEBUG purposes, can be removed
-   print ">>>>>> PLUGIN to rename the FK's to the original name executed after drop the old table\n";
-
    my ($self, %args) = @_;
    my $dbh     = $self->{cxn}->dbh;
    my $row = $dbh->selectrow_arrayref("SHOW CREATE TABLE $table_name");
    my $fks = get_fks($self, $row->[1]);
 
-   # Here we start creating the SQL to rename the FK's
-   my $sql_fk = "ALTER TABLE $table_name \n";
+   # print Dumper(\$fks);
+   # Check if any FK in the new table
+   if ((keys %$fks) > 0) {
+      # This is used for DEBUG purposes, can be removed
+      print ">>>>>> PLUGIN to rename the FK's to the original name executed after drop the old table [after_drop_old_table]\n";
+      $executed = 1;
+      change_fk($dbh, $fks);
+   }
+}
 
-   # Variable to control if we need add an extra ","
-   my $count = 0;
+sub before_drop_triggers {
+   if ($executed == 0) {
+      my ($self, %args) = @_;
+      my $dbh     = $self->{cxn}->dbh;
+      my $row = $dbh->selectrow_arrayref("SHOW CREATE TABLE $table_name");
+      my $fks = get_fks($self, $row->[1]);
 
-   # Loop the FK's to create the SQL
-   while (my ($key_name, $val) = each (%$fks)) {
-      if ($count++ > 0) {
-         $sql_fk .= ", \n";
+      # Check if any FK in the new table
+      if ((keys %$fks) > 0) {
+         # This is used for DEBUG purposes, can be removed
+         print ">>>>>> PLUGIN to rename the FK's to the original name executed after drop the old table [before_drop_triggers]\n";
+         $executed = 1;
+         change_fk($dbh, $fks);
+      }
+   }
+}
+
+sub change_fk {
+   my ($dbh, $fks) = @_;
+      # Here we start creating the SQL to rename the FK's
+      my $sql_fk = "ALTER TABLE $table_name \n";
+
+      # Variable to control if we need add an extra ","
+      my $count = 0;
+
+      # Loop the FK's to create the SQL
+      while (my ($key_name, $val) = each (%$fks)) {
+         if (exists $OLD_table_fks->{substr($key_name, 1)}) {  
+            if ($count++ > 0) {
+               $sql_fk .= ", \n";
+            }
+
+            $sql_fk = $sql_fk . "  DROP FOREIGN KEY `$key_name`, \n";
+            $sql_fk = $sql_fk . "  ADD CONSTRAINT " . substr($key_name, 1) . 
+               " FOREIGN KEY ( " . $val->{colnames} . ") " .
+               " REFERENCES " . $val->{parent_tblname} . " (" . $val->{parent_colnames} . ") ";
+            # print Dumper(\$OLD_table_fks)
+         }
       }
 
-      $sql_fk = $sql_fk . "  DROP FOREIGN KEY `$key_name`, \n";
-      $sql_fk = $sql_fk . "  ADD " . $table_fks->{substr($key_name, 1)}{ddl};
-   }
+      # This will print the SQL to the console used for DEBUG purposes
+      print ">>>>>> PLUGIN SQL: \n$sql_fk\n";
 
-   # This will print the SQL to the console used for DEBUG purposes
-   print ">>>>>> PLUGIN SQL: \n$sql_fk\n";
+      # This line will effectively execute the SQL to rename (DROP and ADD) the FK's
+      $dbh->do($sql_fk);
+   
+}
 
-   # This line will effectively execute the SQL to rename (DROP and ADD) the FK's
-   $dbh->do($sql_fk);
+sub test {
+   
 }
 
 1;

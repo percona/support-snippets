@@ -77,8 +77,11 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     if [[ $FLAVOR == "ps" ]]; then
       lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
       if [[ ! -z "$VERSION" ]]; then
+        VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}' | awk -F'.' '{print $1$2}' ) #55, 56, 57, 80
+        if [ "${VERSION_ACRONYM}" = "80" ]; then
+          lxc exec $NODE_NAME -- percona-release setup ps80
+        fi
         lxc exec $NODE_NAME -- yum -y install ${VERSION}
-        VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
       else
         lxc exec $NODE_NAME -- yum -y install Percona-Server-server-57
         VERSION_ACRONYM="57"

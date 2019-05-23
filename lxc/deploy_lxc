@@ -191,7 +191,7 @@ deploy_replication()
 
   deploy_standalone
   echo "starting replication"
-  $(dirname "$0")/create_replication.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES 
+  $(dirname "$0")/create_replication.sh --flavor=$FLAVOR --name="$M_NAME" --number-of-nodes=$NUMBER_OF_NODES --version=${VERSION}
 }
 
 if [ ! -z "$SHOW_VERSIONS" ]; then

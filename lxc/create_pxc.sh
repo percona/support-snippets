@@ -60,10 +60,10 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     done
     lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
     if [[ ! -z "$VERSION" ]]; then
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat $VERSION
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo less perf $VERSION
       VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
     else
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat Percona-XtraDB-Cluster-57
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo less perf Percona-XtraDB-Cluster-57
       VERSION_ACRONYM="57"
     fi
     lxc exec $NODE_NAME -- iptables -F

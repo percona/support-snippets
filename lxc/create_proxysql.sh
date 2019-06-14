@@ -71,7 +71,7 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     sleep 1
     done
   lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
-  lxc exec $NODE_NAME -- yum -y install proxysql Percona-Server-client-57 which
+  lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo proxysql Percona-Server-client-57 which
   lxc exec $NODE_NAME -- systemctl start proxysql
   sleep 2
   if [[ ! -z "$PXC_NODE" ]]; then

@@ -94,7 +94,7 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
       fi
     fi
 
-    lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo
+    lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo less perf
     lxc exec $NODE_NAME -- iptables -F
     lxc exec $NODE_NAME -- setenforce 0
 

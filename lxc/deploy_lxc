@@ -139,7 +139,7 @@ do
 done
 
 #some standard vars
-MY_USER=$(echo $(whoami) | sed 's/\./-/')
+MY_USER=$(echo $(whoami) | sed 's/\./-/g')
 if [ -z "$FLAVOR" ];
 then
   FLAVOR="ps"

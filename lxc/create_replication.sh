@@ -6,13 +6,14 @@ usage () {
   echo "--flavor=[ps|mysql]		Which flavor of mysql to install"
   echo "--name=                         Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
   echo "--number-of-nodes=N             Number of nodes for replication servers"
+  echo "--version=                      Which specific version should be deployed"
   echo "--help                          print usage"
 }
 
 # Check if we have a functional getopt(1)
 if ! getopt --test
   then
-  go_out="$(getopt --options=edv --longoptions=flavor:,number-of-nodes:,name:,help --name="$(realpath "$0")" -- "$@")"
+  go_out="$(getopt --options=edv --longoptions=flavor:,number-of-nodes:,name:,version:,help --name="$(realpath "$0")" -- "$@")"
   test $? -eq 0 || exit 1
   eval set -- "$go_out"
 fi
@@ -41,6 +42,10 @@ do
     ;;
     --number-of-nodes )
     NUMBER_OF_NODES="$2"
+    shift 2
+    ;;
+    --version )
+    VERSION=$2
     shift 2
     ;;
     --help )
@@ -76,7 +81,12 @@ EOF"
   if [[ $i -eq "1" ]] ; then
     MASTER_IP=$NODE_IP
   else
-    lxc exec $NODE_NAME -- mysql -u root -psekret -e "CHANGE MASTER TO MASTER_HOST='$MASTER_IP', MASTER_USER='root', MASTER_PASSWORD='sekret'; START SLAVE"
+    VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}' | awk -F'.' '{print $1$2}' ) #55, 56, 57, 80
+    if [[ ${FLAVOR} == "ps" ]] && [[  ${VERSION_ACRONYM} == "80" ]]; then
+      lxc exec $NODE_NAME -- mysql -u root -psekret -e "CHANGE MASTER TO MASTER_HOST='$MASTER_IP', MASTER_USER='root', MASTER_PASSWORD='sekret', GET_MASTER_PUBLIC_KEY=1; START SLAVE"
+    else
+      lxc exec $NODE_NAME -- mysql -u root -psekret -e "CHANGE MASTER TO MASTER_HOST='$MASTER_IP', MASTER_USER='root', MASTER_PASSWORD='sekret'; START SLAVE"
+    fi
   fi
 done
 

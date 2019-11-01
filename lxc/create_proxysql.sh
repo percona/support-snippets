@@ -124,3 +124,22 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     lxc exec $NODE_NAME -- proxysql-admin --config-file=/etc/proxysql-admin.cnf --syncusers
   fi
 done
+
+#proxysql clustering
+if [[ $NUMBER_OF_NODES -gt 1 ]]; then
+  for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
+    NODE_NAME="$NAME-$i"
+    echo "Configuring ProxySQL Clustering on $NODE_NAME";
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "UPDATE global_variables SET variable_value='admin:admin;cluster_user:cluster_password' WHERE variable_name = 'admin-admin_credentials';"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "UPDATE global_variables SET variable_value='cluster_user' WHERE variable_name = 'admin-cluster_username';"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "UPDATE global_variables SET variable_value='cluster_password' WHERE variable_name = 'admin-cluster_password';"
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "LOAD ADMIN VARIABLES TO RUNTIME;SAVE ADMIN VARIABLES TO DISK;"
+    NODE_INDEX=1
+    for node_ip in $( $(dirname "$0")/deploy_lxc --list | grep $NAME | awk '{print $6}');
+    do
+      lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "INSERT INTO proxysql_servers (hostname, port, weight, comment) VALUES ('$node_ip',6032,0,'${NAME}-${NODE_INDEX}');"
+      let "NODE_INDEX=NODE_INDEX+1"
+    done
+    lxc exec $NODE_NAME -- mysql -uadmin -padmin -h 127.0.0.1 -P 6032 -e "LOAD PROXYSQL SERVERS TO RUNTIME;SAVE PROXYSQL SERVERS TO DISK;"
+  done
+fi

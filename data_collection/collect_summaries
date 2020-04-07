@@ -1,0 +1,202 @@
+#!/bin/bash
+#
+# Collection of summary outputs.
+# Example commands:
+#    collect_summaries --mysql
+#    collect_summaries --mysql --host 10.10.0.24 --port 3307 -- --user=root -p
+
+[[ PT_DEBUG -eq 1 ]] && echo "#" $(basename "$0") "called with the following arguments: "
+[[ PT_DEBUG -eq 1 ]] && echo "# " $@
+
+# Default values for variables
+DEST_OUTPUTS="/tmp/for-percona/$(hostname)"
+CAPTURE_MYSQL=0
+CAPTURE_MONGODB=0
+CAPTURE_POSTGRESQL=0
+DB_SPECIFIC_ARGS_ENABLED=0
+DB_HOST="127.0.0.1"
+DB_PORT=0
+
+while (( "$#" )); do
+  case "$1" in
+    -d|--dest)
+      DEST_OUTPUTS=$2
+      shift 2
+      ;;
+
+    -h|--host)
+      DB_HOST=$2
+      shift 2
+      ;;
+
+    -p|--port)
+      DB_PORT=$2
+      shift 2
+      ;;
+
+# Flags for enabling DB collections:
+    -m|--mysql)
+      CAPTURE_MYSQL=1
+      [[ PT_DEBUG -eq 1 ]] && echo "# MySQL capture enabled"
+      shift 1
+      ;;
+    -M|--mongodb)
+      CAPTURE_MONGODB=1
+      [[ PT_DEBUG -eq 1 ]] && echo "# MongoDB capture enabled"
+      shift 1
+      ;;
+    -P|--postgresql)
+      CAPTURE_POSTGRESQL=1
+      [[ PT_DEBUG -eq 1 ]] && echo "# PostgreSQL capture enabled"
+      shift 1
+      ;;
+
+# Parameters after double dash (--) are stored for use with DB-specific summaries
+    --)
+      DB_SPECIFIC_ARGS_ENABLED=1
+      [[ PT_DEBUG -eq 1 ]] && echo "# Parameters after double dash (--) stored"
+      shift 1
+      break
+      ;;
+
+# Equal signs are not supported, instead use space to separate argument and value
+    *=*)
+      echo "Error: Equal sign is not supported in argument: $1" >&2
+      echo "       Separate arguments and values using a space instead." >&2
+      exit 1
+      ;;
+
+# Print help output
+    -h|--help)
+      cat <<EOHELP
+Usage:
+    $(basename "$0") [OPTIONS] [-- other DB connection options]
+
+Collect summary outputs from OS and database services running in the server.
+
+Options:
+    -d, --dest         destination directory for outputs captured
+                         (default: /tmp/for-percona/`hostname`)
+    -h, --host         hostname or IP address for the database
+                         (default: 127.0.0.1)
+    -m, --mysql        enable MySQL summaries data capture
+    -M, --mongodb      enable MongoDB summaries data capture
+    -p, --port         port for the database
+                         (defaults: 3306 for -m, 27017 for -M, and 5432 for -P)
+    -P, --postgresql   enable PostgreSQL summaries data capture
+    -h, --help         print this message and exit
+
+Examples:
+    $(basename "$0") --mysql
+    $(basename "$0") --mysql --host 10.10.0.24 --port 3307 -- --user=root -p
+    
+EOHELP
+      shift 1
+      exit 0
+      ;;
+
+# All other arguments are not valid
+    *)
+      echo "Error: Invalid argument: $1" >&2
+      exit 1
+      ;;
+
+  esac
+done
+
+[[ PT_DEBUG -eq 1 ]] && echo "# Parameters after double dash are:" $@
+
+# Refuse to run if directory exists and is not empty
+if [[ -d ${DEST_OUTPUTS} ]] && [[ "$(ls -A ${DEST_OUTPUTS})" != "" ]]; then
+  echo "Error: ${DEST_OUTPUTS} is not empty."
+  echo "       Remove all files, or use another directory using --dest"
+  exit 2
+fi
+
+# Check if destination directory is created, or create it if not
+[[ -d ${DEST_OUTPUTS} ]] || mkdir -p ${DEST_OUTPUTS}
+
+# Begin data collection
+pt-summary > "${DEST_OUTPUTS}/pt-summary.out" &
+
+# Collect MySQL summaries
+if [[ ${CAPTURE_MYSQL} -eq 1 ]]; then
+    # Set to default MySQL port, if none was specified
+    [[ ${DB_PORT} -eq 0 ]] && DB_PORT=3306
+
+    if [[ ${DB_SPECIFIC_ARGS_ENABLED} -eq 1 ]]; then
+      # Doesn't run in the background, in case password input is needed
+      pt-mysql-summary --host ${DB_HOST} --port ${DB_PORT} -- $@ > "${DEST_OUTPUTS}/pt-mysql-summary.out"
+    else 
+      pt-mysql-summary --host ${DB_HOST} --port ${DB_PORT} > "${DEST_OUTPUTS}/pt-mysql-summary.out" &
+    fi
+fi
+
+# Collect MongoDB summaries
+if [[ ${CAPTURE_MONGODB} -eq 1 ]]; then
+    # Set to default MongoDB port, if none was specified
+    [[ ${DB_PORT} -eq 0 ]] && DB_PORT=27017
+
+    if [[ ${DB_SPECIFIC_ARGS_ENABLED} -eq 1 ]]; then
+      # Doesn't run in the background, in case password input is needed
+      pt-mongodb-summary ${DB_HOST}:${DB_PORT} -- $@ > "${DEST_OUTPUTS}/pt-mongodb-summary.out"
+    else 
+      pt-mongodb-summary ${DB_HOST}:${DB_PORT} > "${DEST_OUTPUTS}/pt-mongodb-summary.out" &
+    fi
+fi
+
+### TODO (Nando): Check if PGHOST is needed, regarding the following message:
+### export the PGHOST to /var/run/postgresql to Ubuntu and Debian, /tmp otherwise
+
+# Collect PostgreSQL summaries
+if [[ ${CAPTURE_POSTGRESQL} -eq 1 ]]; then
+    # Set to default PostgreSQL port, if none was specified
+    [[ ${DB_PORT} -eq 0 ]] && DB_PORT=5432
+
+    if [[ ${DB_SPECIFIC_ARGS_ENABLED} -eq 1 ]]; then
+      # Doesn't run in the background, in case password input is needed
+      pt-pg-summary --host ${DB_HOST} --port ${DB_PORT} -- $@ > "${DEST_OUTPUTS}/pt-postgresql-summary.out"
+    else 
+      pt-pg-summary --host ${DB_HOST} --port ${DB_PORT} > "${DEST_OUTPUTS}/pt-postgresql-summary.out" &
+    fi
+fi
+
+# IO related outputs
+lsblk --all > "${DEST_OUTPUTS}/lsblk-all.out" &
+smartctl --scan | awk '{print $1}' | while read DEVICE; do { smartctl --xall "${DEVICE}"; } done > "${DEST_OUTPUTS}/smartctl.out" &
+multipath -ll > "${DEST_OUTPUTS}/multipath-ll.out" &
+
+# For systems with LVM
+lvdisplay --all --maps > "${DEST_OUTPUTS}/lvdisplau-all-maps.out" &
+pvdisplay --maps > "${DEST_OUTPUTS}/pvdisplay-maps.out" &
+pvs -v > "${DEST_OUTPUTS}/pvs-v.out" &
+vgdisplay > "${DEST_OUTPUTS}/vgdisplay.out" &
+
+# For systems with NFS mounts
+nfsstat -m > "${DEST_OUTPUTS}/nfsstat-m.out" &
+nfsiostat 1 30 > "${DEST_OUTPUTS}/nfsiostat.out" &
+ 
+# Misc outputs
+dmesg -T 2>/dev/null > "${DEST_OUTPUTS}/dmesg.out" || dmesg > "${DEST_OUTPUTS}/dmesg.out" &
+ulimit -a > "${DEST_OUTPUTS}/ulimit_a.out" &
+numactl --hardware > "${DEST_OUTPUTS}/numactl-hardware.out" &
+
+sleep 1
+
+# If there are any background jobs running, we wait up to 60 seconds
+if [[ "$(jobs -r)" != "" ]]; then
+  echo "Wating up to 60 seconds for data capture tools to finish"
+  for i in $(seq 60); do
+    echo -n "."
+    sleep 1
+    [[ "$(jobs -r)" == "" ]] && break
+  done
+  echo
+fi
+
+echo "Creating .tar.gz file with all collected output files"
+tar czf "${DEST_OUTPUTS}/collected-summaries-`hostname`.tar.gz" ${DEST_OUTPUTS}/*
+
+
+exit 0
+

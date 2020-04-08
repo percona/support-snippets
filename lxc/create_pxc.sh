@@ -58,12 +58,17 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
         fi
         sleep 1
     done
-    lxc exec $NODE_NAME -- yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
+    lxc exec $NODE_NAME -- yum -y install sudo https://repo.percona.com/yum/percona-release-latest.noarch.rpm
     if [[ ! -z "$VERSION" ]]; then
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo less perf $VERSION
-      VERSION_ACRONYM=$( echo ${VERSION} | awk -F'-' '{print $4}') #55, 56, 57, 80
+      VERSION_ACRONYM=$( echo ${VERSION} | sed 's/[^0-9]*//g' | head -c2);
+      if [[ ${VERSION_ACRONYM} == "80" ]]
+      then
+        lxc exec $NODE_NAME -- percona-release enable pxc-80 experimental
+      fi
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget less perf $VERSION
+
     else
-      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget sudo less perf Percona-XtraDB-Cluster-57
+      lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget less perf Percona-XtraDB-Cluster-57
       VERSION_ACRONYM="57"
     fi
     lxc exec $NODE_NAME -- iptables -F
@@ -80,7 +85,13 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     fi
 done
 
-
+PXCSSL=""
+SSTAUTH="wsrep_sst_auth=root:sekret"
+if [[ ${VERSION_ACRONYM} == "80" ]]
+then
+  PXCSSL="pxc_encrypt_cluster_traffic = OFF"
+  SSTAUTH=""
+fi
 for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
 NODE_NAME="$NAME-$i"
 NODE_IP=$(lxc exec $NODE_NAME -- ip addr | grep inet | grep eth0 | awk '{print $2}' | awk -F'/' '{print $1}')
@@ -109,24 +120,21 @@ wsrep_slave_threads = 1
 wsrep_auto_increment_control        = ON
 
 wsrep_sst_method=xtrabackup-v2
-wsrep_sst_auth=root:sekret
+$SSTAUTH
 
 wsrep_cluster_address=gcomm://$IPS
 wsrep_node_address=$NODE_IP
 wsrep_node_name=node$i
 
 
-innodb_locks_unsafe_for_binlog=1
-innodb_autoinc_lock_mode=2
 innodb_file_per_table=1
 innodb-log-file-size = 256M
 innodb-flush-log-at-trx-commit = 2
 innodb-buffer-pool-size = 512M
-innodb_use_native_aio = 0
 
 server_id=$i
 binlog_format = ROW
-
+$PXCSSL
 
 
 [sst]
@@ -142,10 +150,19 @@ EOF"
 if [[ $i -eq 1 ]]
 then
     lxc exec $NODE_NAME -- systemctl start mysql@bootstrap
-
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
-    lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
+    if [[ $VERSION_ACRONYM == "80" ]]; then #Mysql 8 does not support GRANT with IDENTIFIED
+        lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY 'sekret';"
+        lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'%' = 'sekret';"
+        lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%';"
+        lxc exec $NODE_NAME -- mysql -e "CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY 'sekret';"
+        lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = 'sekret';"
+        lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1';"
+        lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'localhost' = 'sekret';"
+    else
+      lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
+      lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
+      lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
+    fi
 else
     lxc exec $NODE_NAME -- systemctl start mysql
 fi

@@ -221,7 +221,11 @@ if [ ! -z "$SHOW_VERSIONS" ]; then
           curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'Server-server' | grep -F $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
         fi
     elif [ "$TYPE" == "pxc" ]; then
-      curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+      if [ "${SHOW_VERSIONS}" = "8.0" ]; then
+        curl -s https://repo.percona.com/pxc-80/yum/experimental/7/RPMS/x86_64/ | grep 'xtradb-cluster-server-[0-9].[0-9].[0-9]' | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+      else
+        curl -s https://repo.percona.com/release/7/RPMS/x86_64/ | grep 'XtraDB-Cluster-[0-9][0-9]-[0-9]' | grep $SHOW_VERSIONS | awk -F'href=' '{print $2}' | awk -F'"' '{print $2}' | awk -F'.rpm' '{print $1}'
+      fi
     else
       echo "--show-versions is only available with --type=pxc or --type=standalone"
       exit 1;

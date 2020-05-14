@@ -63,7 +63,7 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
       VERSION_ACRONYM=$( echo ${VERSION} | sed 's/[^0-9]*//g' | head -c2);
       if [[ ${VERSION_ACRONYM} == "80" ]]
       then
-        lxc exec $NODE_NAME -- percona-release enable pxc-80 experimental
+        lxc exec $NODE_NAME -- percona-release enable pxc-80 release
       fi
       lxc exec $NODE_NAME -- yum -y install tar gdb strace vim qpress socat wget less perf $VERSION
 

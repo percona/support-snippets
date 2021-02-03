@@ -1,0 +1,35 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	0	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+LXC wrapper	/work/support-snippets/lxc/README.md	/^# LXC wrapper$/;"	function	line:1
+Pre Requirements	/work/support-snippets/lxc/README.md	/^## Pre Requirements$/;"	function	line:5
+Usage	/work/support-snippets/lxc/README.md	/^## Usage$/;"	function	line:13
+Deploy LXC examples	/work/support-snippets/lxc/README.md	/^## Deploy LXC examples$/;"	function	line:39
+PXC Cluster	/work/support-snippets/lxc/README.md	/^### PXC Cluster$/;"	function	line:41
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:46
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:53
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:84
+Replace --version=Percona-XtraDB-Cluster-57-5.7.20-29.24.1.el7.x86_64 with the specific version you want to install	/work/support-snippets/lxc/README.md	/^# Replace --version=Percona-XtraDB-Cluster-57-5.7.20-29.24.1.el7.x86_64 with the specific version you want to install$/;"	function	line:85
+ProxySQL	/work/support-snippets/lxc/README.md	/^### ProxySQL$/;"	function	line:89
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:94
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:124
+Percona Server / Standalone	/work/support-snippets/lxc/README.md	/^### Percona Server \/ Standalone$/;"	function	line:128
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:133
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:178
+Replace --version=Percona-Server-server-57-5.7.20-19.1.el7.x86_64 with the specific version you want to install	/work/support-snippets/lxc/README.md	/^# Replace --version=Percona-Server-server-57-5.7.20-19.1.el7.x86_64 with the specific version you want to install$/;"	function	line:179
+Replication	/work/support-snippets/lxc/README.md	/^### Replication$/;"	function	line:183
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:188
+Replace 999999 by the	/work/support-snippets/lxc/README.md	/^# Replace 999999 by the #ISSUE number you are working with$/;"	function	line:195
+LXC useful commands:	/work/support-snippets/lxc/README.md	/^## LXC useful commands:$/;"	function	line:200
+usage	/work/support-snippets/lxc/create_proxysql.sh	/^usage () {$/;"	function	line:3
+usage	/work/support-snippets/lxc/deploy_lxc	/^usage () {$/;"	function	line:3
+deploy_proxysql	/work/support-snippets/lxc/deploy_lxc	/^deploy_proxysql() {$/;"	function	line:159
+deploy_pxc	/work/support-snippets/lxc/deploy_lxc	/^deploy_pxc()$/;"	function	line:171
+deploy_standalone	/work/support-snippets/lxc/deploy_lxc	/^deploy_standalone()$/;"	function	line:185
+deploy_replication	/work/support-snippets/lxc/deploy_lxc	/^deploy_replication()$/;"	function	line:197
+usage	/work/support-snippets/lxc/create_replication.sh	/^usage () {$/;"	function	line:3
+usage	/work/support-snippets/lxc/create_standalone.sh	/^usage () {$/;"	function	line:3
+usage	/work/support-snippets/lxc/create_pxc.sh	/^usage () {$/;"	function	line:3

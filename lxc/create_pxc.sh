@@ -6,13 +6,13 @@ usage () {
   echo "--name=                         Identifier of this machine. Machines are identified by [user.name]-[type]-[name]"
   echo "--number-of-nodes=N             Number of nodes when running with pxc"
   echo "--version=                      Which specific version should be deployed"
+  echo "--with-rr=PATH_TO_BINARY	Run mysqld under rr(Record and Replay)"
   echo "--help                          print usage"
 }
-
 # Check if we have a functional getopt(1)
 if ! getopt --test
   then
-  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,version:,help --name="$(realpath "$0")" -- "$@")"
+  go_out="$(getopt --options=edv --longoptions=number-of-nodes:,name:,version:,with-rr:,help --name="$(realpath "$0")" -- "$@")"
   test $? -eq 0 || exit 1
   eval set -- "$go_out"
 fi
@@ -38,13 +38,16 @@ do
     VERSION=$2
     shift 2
     ;;
+    --with-rr)
+    WITH_RR=$2
+    shift 2
+    ;;
     --help )
     usage
     exit 0
     ;;
   esac
 done
-
 for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     NODE_NAME="$NAME-$i"
     lxc init centos-7 $NODE_NAME -s $(whoami)
@@ -83,10 +86,25 @@ for (( i=1; i<=$NUMBER_OF_NODES; i++ ))do
     else
         IPS="$NODE_IP"
     fi
+
+    if [[ ! -z "$WITH_RR" ]] && [[ ${VERSION_ACRONYM} == "80" ]] ; then
+       lxc exec $NODE_NAME -- yum -y install epel-release
+       lxc exec $NODE_NAME -- yum -y install capnproto-libs percona-xtradb-cluster-debuginfo.x86_64
+       lxc file push ${WITH_RR} ${NODE_NAME}/tmp/rr.tar
+       lxc exec $NODE_NAME -- tar -xf /tmp/rr.tar -C /usr/
+    fi
 done
 
 PXCSSL=""
 SSTAUTH="wsrep_sst_auth=root:sekret"
+TIMEOUTS=""
+SST_TIMEOUT=""
+SOCK_OPTS=""
+if [[ ! -z "$WITH_RR" ]] && [[ ${VERSION_ACRONYM} == "80" ]] ; then
+TIMEOUTS="evs.inactive_check_period=PT2.5S; evs.suspect_timeout=PT15S; gmcast.peer_timeout=PT9S"
+SST_TIMEOUT="sst-initial-timeout=600"
+SOCK_OPTS="sockopt=retry=600"
+fi
 if [[ ${VERSION_ACRONYM} == "80" ]]
 then
   PXCSSL="pxc_encrypt_cluster_traffic = OFF"
@@ -115,7 +133,7 @@ user=mysql
 wsrep_cluster_name=$NAME
 
 wsrep_provider=/usr/lib64/libgalera_smm.so
-wsrep_provider_options              = \"gcs.fc_limit=500; gcs.fc_master_slave=YES; gcs.fc_factor=1.0; gcache.size=256M;\"
+wsrep_provider_options              = \"gcs.fc_limit=500; gcs.fc_master_slave=YES; gcs.fc_factor=1.0; gcache.size=12M; gcache.page_size=12M; ${TIMEOUTS}\"
 wsrep_slave_threads = 1
 wsrep_auto_increment_control        = ON
 
@@ -139,6 +157,8 @@ $PXCSSL
 
 [sst]
 streamfmt=xbstream
+${SST_TIMEOUT}
+${SOCK_OPTS}
 
 [xtrabackup]
 compress
@@ -158,13 +178,22 @@ then
         lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = 'sekret';"
         lxc exec $NODE_NAME -- mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1';"
         lxc exec $NODE_NAME -- mysql -e "SET PASSWORD FOR 'root'@'localhost' = 'sekret';"
+        if [[ ! -z "$WITH_RR" ]] ; then
+         lxc exec $NODE_NAME -- systemctl stop mysql@bootstrap
+         lxc exec $NODE_NAME -- /usr/local/bin/rr /usr/sbin/mysqld --wsrep-new-cluster --wsrep_start_position=00000000-0000-0000-0000-000000000000:-1 --log-error=/var/lib/mysql/error.log &
+	fi
     else
       lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'%' identified by 'sekret';"
       lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'127.0.0.1' identified by 'sekret';"
       lxc exec $NODE_NAME -- mysql -e "grant all privileges on *.* to 'root'@'localhost' identified by 'sekret';"
     fi
 else
-    lxc exec $NODE_NAME -- systemctl start mysql
+    if [[ ! -z "$WITH_RR" ]] && [[ ${VERSION_ACRONYM} == "80" ]] ; then
+        lxc exec $NODE_NAME -- /usr/local/bin/rr /usr/sbin/mysqld --wsrep_start_position=00000000-0000-0000-0000-000000000000:-1 --log-error=/var/lib/mysql/error.log &
+	sleep 30
+    else
+      lxc exec $NODE_NAME -- systemctl start mysql
+    fi
 fi
 done
 

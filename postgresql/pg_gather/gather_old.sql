@@ -14,8 +14,10 @@
 COPY (SELECT current_timestamp,current_user,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),pg_current_xlog_location()) TO stdin;
 \echo '\\.'
 
---There is more Activity information in PG13 and PG12 than previous versions
-\echo COPY pg_get_activity (datid, pid ,usesysid ,application_name ,state ,query ,wait_event_type ,wait_event ,xact_start ,query_start ,backend_start ,state_change ,client_addr, client_hostname, client_port, backend_xid ,backend_xmin, backend_type,ssl ,sslversion ,sslcipher ,sslbits ,sslcompression ,ssl_client_dn ) FROM stdin;
+--FIX NEEDED for Issue 1 : backend_type is not there PG 9.6. verify for PG 9.5 also.
+--FOR PG95: COPY pg_get_activity (datid,pid,usesysid,application_name,state,query,wait_event_type,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,ssl,sslversion,sslcipher,sslbits,sslcompression,ssl_client_dn ) FROM stdin;
+--FOR PG96: COPY pg_get_activity (datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,ssl,sslversion,sslcipher,sslbits,sslcompression,ssl_client_dn ) FROM stdin;
+\echo COPY pg_get_activity (datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,ssl,sslversion,sslcipher,sslbits,sslcompression,ssl_client_dn ) FROM stdin;
 \copy (select * from  pg_stat_get_activity(NULL) where pid != pg_backend_pid()) to stdin
 \echo '\\.'
 
@@ -88,10 +90,8 @@ COPY (SELECT indexrelid,indrelid,indisunique,indisprimary, pg_stat_get_numscans(
 \echo COPY pg_get_rel FROM stdin;
 COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid) AS n_live_tup,pg_stat_get_dead_tuples(oid) AS n_dead_tup,
    pg_relation_size(oid) only_tab_size,  pg_table_size(oid) tot_tab_size, pg_total_relation_size(oid) "tot_tab+idx", age(relfrozenxid) rel_age,
- CASE WHEN (pg_stat_get_last_autovacuum_time(oid) > pg_stat_get_last_vacuum_time(oid)) 
-    THEN pg_stat_get_last_autovacuum_time(oid) ELSE  pg_stat_get_last_vacuum_time(oid) END,
- CASE WHEN (pg_stat_get_last_autoanalyze_time(oid) > pg_stat_get_last_analyze_time(oid))
-    THEN pg_stat_get_last_autoanalyze_time(oid) ELSE pg_stat_get_last_analyze_time(oid) END,
+   GREATEST(pg_stat_get_last_autovacuum_time(oid),pg_stat_get_last_vacuum_time(oid)),
+   GREATEST(pg_stat_get_last_autoanalyze_time(oid),pg_stat_get_last_analyze_time(oid)),
  pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid)
  FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
 \echo '\\.'

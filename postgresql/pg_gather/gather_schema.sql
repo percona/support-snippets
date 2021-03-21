@@ -1,6 +1,6 @@
 --Schema for using with gather.sql v1
 
-DROP TABLE pg_gather,pg_get_activity,pg_get_class,pg_get_confs,pg_get_db,pg_get_index,pg_get_rel,pg_get_wait,pg_srvr,pg_get_block,pg_pid_wait,pg_replication_stat,pg_archiver_stat,pg_tab_bloat,pg_get_toast;
+DROP TABLE pg_gather,pg_get_activity,pg_get_class,pg_get_confs,pg_get_db,pg_get_index,pg_get_rel,pg_get_wait,pg_srvr,pg_get_block,pg_pid_wait,pg_replication_stat,pg_archiver_stat,pg_tab_bloat,pg_get_toast,pg_get_statements;
 
 CREATE TABLE pg_srvr (
     connstr text
@@ -52,6 +52,14 @@ CREATE TABLE pg_get_activity (
     leader_pid integer
 );
 
+CREATE TABLE pg_get_statements(
+    userid oid,
+    dbid oid,
+    query text,
+    calls bigint,
+    total_time double precision
+);
+
 CREATE TABLE pg_get_wait(
     itr integer,
     pid integer,
@@ -82,7 +90,8 @@ CREATE TABLE pg_get_db (
     deadlocks bigint,
     blk_read_time double precision,
     blk_write_time double precision,
-    db_size bigint
+    db_size bigint,
+    age integer
 );
 
 CREATE TABLE pg_get_confs (

@@ -22,8 +22,8 @@ SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines
   "SOMETHING WENT WRONG WHILE IMPORTING THE DATA. PLEASE MAKE SURE THAT ALL TABLES ARE DROPPED AND RECREATED AS PART OF IMPORTING";
   \q
 \endif
-SELECT  UNNEST(ARRAY ['Collected At','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [collect_ts::text,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS V6   
+SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
+        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V7"
 FROM pg_gather;
 SELECT replace(connstr,'You are connected to ','') "pg_gather Connection and PostgreSQL Server info" FROM pg_srvr; 
 SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_updated+tup_deleted transactions, blks_hit*100/blks_fetch  hit_ratio,temp_files,temp_bytes,db_size,age FROM pg_get_db where blks_fetch != 0;
@@ -46,6 +46,7 @@ SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_u
 \echo <li><a href="#sess">Session Details</a></li>
 \echo <li><a href="#blocking">Blocking Sessions</a></li>
 \echo <li><a href="#statements" title="pg_get_statements">Top 10 Statements</a></li>
+\echo <li><a href="#bgcp" >Background Writer and Checkpointer</a></li>
 \echo <li><a href="#findings">Important Findings</a></li>
 \echo </ol>
 \echo <h2>Tables Info</h2>
@@ -112,6 +113,35 @@ SELECT * FROM pg_get_block;
 select query,total_time,calls from pg_get_statements order by 2 desc limit 10;
 \echo <a href="#topics">Go to Topics</a>
 
+\echo <h2 id="bgcp" style="clear: both">Background Writer and Checkpointer Information</h2>
+\echo <p>Efficiency of Background writer and Checkpointer Process</p>
+SELECT round(checkpoints_req*100/tot_cp,1) "Forced Checkpoint %" ,
+round(min_since_reset/tot_cp,2) "avg mins between CP",
+round(checkpoint_write_time::numeric/(tot_cp*1000),4) "Avg CP write time (s)",
+round(checkpoint_sync_time::numeric/(tot_cp*1000),4)  "Avg CP sync time (s)",
+round(total_buffers::numeric*8192/(1024*1024),2) "Tot MB Written",
+round((buffers_checkpoint::numeric/tot_cp)*8192/(1024*1024),4) "MB per CP",
+round(buffers_checkpoint::numeric*8192/(min_since_reset*60*1024*1024),4) "Checkpoint MBps",
+round(buffers_clean::numeric*8192/(min_since_reset*60*1024*1024),4) "Bgwriter MBps",
+round(buffers_backend::numeric*8192/(min_since_reset*60*1024*1024),4) "Backend MBps",
+round(total_buffers::numeric*8192/(min_since_reset*60*1024*1024),4) "Total MBps",
+round(buffers_alloc::numeric/total_buffers,3)  "New buffers ratio",
+round(100.0*buffers_checkpoint/total_buffers,1)  "Clean by checkpoints (%)",
+round(100.0*buffers_clean/total_buffers,1)   "Clean by bgwriter (%)",
+round(100.0*buffers_backend/total_buffers,1)  "Clean by backends (%)",
+round(100.0*maxwritten_clean/(min_since_reset*60000 / delay.setting::numeric),2)   "Bgwriter halts per runs(%)",
+coalesce(round(100.0*maxwritten_clean/(nullif(buffers_clean,0)/ lru.setting::numeric),2),0)  "Bgwriter halts due to LRU hit (%)"
+FROM pg_get_bgwriter
+CROSS JOIN 
+(SELECT 
+    round(extract('epoch' from (select collect_ts from pg_gather) - stats_reset)/60)::numeric min_since_reset,
+    buffers_checkpoint + buffers_clean + buffers_backend total_buffers,
+    checkpoints_timed+checkpoints_req tot_cp 
+    FROM pg_get_bgwriter) AS bg
+JOIN pg_get_confs delay ON delay.name = 'bgwriter_delay'
+JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages'; 
+\echo <a href="#topics">Go to Topics</a>
+
 \echo <h2 id="findings" style="clear: both">Important Findings</h2>
 \pset format aligned
 \pset tuples_only on
@@ -124,12 +154,12 @@ FROM W;
 \echo <script type="text/javascript">
 \echo $(function() { $("#busy").hide(); });
 \echo $("input").change(function(){  alert("Number changed"); }); 
-\echo function bytesToSize(bytes) {
+\echo function bytesToSize(bytes,divisor = 1000) {
 \echo   const sizes = ["B","KB","MB","GB","TB"];
 \echo   if (bytes == 0) return "0B";
-\echo   const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1000)), 10);
+\echo   const i = parseInt(Math.floor(Math.log(bytes) / Math.log(divisor)), 10);
 \echo   if (i === 0) return bytes + sizes[i];
-\echo   return (bytes / (1000 ** i)).toFixed(1) + sizes[i]; 
+\echo   return (bytes / (divisor ** i)).toFixed(1) + sizes[i]; 
 \echo }
 \echo autovacuum_freeze_max_age = 0; //Number($("#params td:contains('autovacuum_freeze_max_age')").parent().children().eq(1).text());
 \echo function checkpars(){   //parameter checking
@@ -148,18 +178,27 @@ FROM W;
 \echo       $(this).children().eq(1).addClass("lime").prop("title",$(this).children().eq(2).text());
 \echo       break;
 \echo     case "effective_cache_size":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*8*1024));
+\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*8*1024,1024));
 \echo       break;
 \echo     case "maintenance_work_mem":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024));
+\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024,1024));
+\echo       break;
+\echo     case "work_mem":
+\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024,1024));
+\echo       break;
+\echo     case "shared_buffers":
+\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*8*1024,1024));
 \echo       break;
 \echo     case "max_connections":
 \echo       $(this).children().eq(1).addClass("lime").prop("title",$(this).children().eq(1).text());
 \echo       if($(this).children().eq(1).text() > 500) $(this).children().eq(1).addClass("warn");
 \echo       break;
 \echo     case "max_wal_size":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024*1024));
+\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024*1024,1024));
 \echo       if($(this).children().eq(1).text() < 10240) $(this).children().eq(1).addClass("warn");
+\echo       break;
+\echo     case "random_page_cost":
+\echo       if($(this).children().eq(1).text() > 1.2) $(this).children().eq(1).addClass("warn");
 \echo       break;
 \echo     case "server_version":
 \echo       $(this).children().eq(1).addClass("lime");

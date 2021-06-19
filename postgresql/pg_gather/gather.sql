@@ -1,9 +1,10 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
----- Version 2 for PG 10,11,12 - 25 - Jan -2021 
----- Version 3 Supporting PG 13 - 06 - Feb -2021
----- Version 4 Bug fixes and Report enhacements
----- Version 5 Force exit if not healthy
+---- For Revision History : https://github.com/jobinau/pg_gather/releases
 
+--Detect PG versions and type of gathering
+SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( current_database() != 'template1' ) as fullgather \gset
+
+\if :fullgather
 ---Error out and exit, unless healthy
 \echo 'SELECT (SELECT count(*) > 1 FROM pg_srvr) AS conlines \\gset'
 \echo '\\if :conlines'
@@ -11,22 +12,29 @@
 \echo 'SOMETHING WRONG, EXITING;'
 \echo '\\q'
 \echo '\\endif'
+\endif
+
+---Option for passing parameters
+--\if :{?FULL}
+--\else
+--    \set FULL true
+--\endif
 
 \pset tuples_only
 \echo '\\t'
 \echo '\\r'
 
+\if :fullgather
 --PG Server
 \echo COPY pg_srvr FROM stdin;
 \conninfo
 \echo '\\.'
+\endif
 
 \echo COPY pg_gather FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V7',current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V8',current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdin;
 \echo '\\.'
 
---Activity information based on PG versions
-SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13 \gset
 \if :pg13
     \echo COPY pg_get_activity (datid, pid ,usesysid ,application_name ,state ,query ,wait_event_type ,wait_event ,xact_start ,query_start ,backend_start ,state_change ,client_addr, client_hostname, client_port, backend_xid ,backend_xmin, backend_type,ssl ,sslversion ,sslcipher ,sslbits ,sslcompression ,ssl_client_dn ,ssl_client_serial,ssl_issuer_dn ,gss_auth ,gss_princ ,gss_enc,leader_pid) FROM stdin;
 \elif :pg12
@@ -51,15 +59,15 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 
 --Wait Event Analysis
 --A much lightweight implimentation 26/12/2020
-\a
 PREPARE pidevents AS
-SELECT pid || E'\t' || wait_event FROM pg_stat_activity WHERE state != 'idle' and pid != pg_backend_pid();
---SELECT pg_stat_get_backend_pid(s.backendid) || E'\t' || pg_stat_get_backend_wait_event(s.backendid) FROM (SELECT pg_stat_get_backend_idset() AS backendid) AS s WHERE pg_stat_get_backend_wait_event(s.backendid) NOT IN ('AutoVacuumMain','LogicalLauncherMain');
-\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
+SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_activity WHERE state != 'idle' and pid != pg_backend_pid();
+\a
+\o /dev/null
 SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) g;
+\o
+\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
 \echo '\\.'
-\a
 
 --pg_stat_statements
 SELECT (select count(*) > 0 from pg_class where relname='pg_stat_statements') AS pg_stmnt \gset
@@ -74,7 +82,7 @@ SELECT (select count(*) > 0 from pg_class where relname='pg_stat_statements') AS
 \endif
 
 --Database level info
-\echo COPY pg_get_db (datid,datname,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age) FROM stdin;
+\echo COPY pg_get_db (datid,datname,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age,stats_reset) FROM stdin;
 COPY (SELECT d.oid, d.datname, 
 pg_stat_get_db_xact_commit(d.oid) AS xact_commit,
 pg_stat_get_db_xact_rollback(d.oid) AS xact_rollback,
@@ -90,8 +98,15 @@ pg_stat_get_db_temp_bytes(d.oid) AS temp_bytes,
 pg_stat_get_db_deadlocks(d.oid) AS deadlocks,
 pg_stat_get_db_blk_read_time(d.oid) AS blk_read_time,
 pg_stat_get_db_blk_write_time(d.oid) AS blk_write_time,
-pg_database_size(d.oid) AS db_size, age(datfrozenxid)
+pg_database_size(d.oid) AS db_size, age(datfrozenxid),
+pg_stat_get_db_stat_reset_time(d.oid) AS stats_reset
 FROM pg_database d) TO stdin;
+\echo '\\.'
+
+\if :fullgather
+--Users / Roles
+\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,rolconfig) FROM stdin;
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,rolconfig from pg_roles WHERE rolcanlogin) TO stdout;
 \echo '\\.'
 
 --pg_settings
@@ -118,6 +133,36 @@ COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid
  pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid)
  FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
 \echo '\\.'
+
+--Bloat estimate on a 64bit machine with PG version above 9.0. 
+\echo COPY pg_tab_bloat FROM stdin;
+COPY ( SELECT
+table_oid, cc.relname AS tablename, cc.relpages,
+CEIL((cc.reltuples*((datahdr+ma- (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)) AS est_pages
+FROM (
+SELECT
+    ma,bs,table_oid,
+    (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
+    (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
+FROM (
+    SELECT s.starelid as table_oid ,23 AS hdr, 8 AS ma, 8192 AS bs, SUM((1-stanullfrac)*stawidth) AS datawidth, MAX(stanullfrac) AS maxfracsum,
+    23 +( SELECT 1+count(*)/8  FROM pg_statistic s2 WHERE stanullfrac<>0 AND s.starelid = s2.starelid ) AS nullhdr
+    FROM pg_statistic s 
+    GROUP BY 1,2
+) AS foo
+) AS rs
+JOIN pg_class cc ON cc.oid = rs.table_oid
+JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema' 
+) TO stdin;
+\echo '\\.'
+
+--Toast
+\echo COPY pg_get_toast FROM stdin;
+COPY (
+SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
+\echo '\\.'
+
+\endif
 
 --Blocking information
 \echo COPY pg_get_block FROM stdin;
@@ -171,43 +216,15 @@ select archived_count,last_archived_wal,last_archived_time,last_failed_wal,last_
 ) TO stdin;
 \echo '\\.'
 
---Bloat estimate on a 64bit machine with PG version above 9.0. 
-\echo COPY pg_tab_bloat FROM stdin;
-COPY ( SELECT
-table_oid, cc.relname AS tablename, cc.relpages,
-CEIL((cc.reltuples*((datahdr+ma- (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)) AS est_pages
-FROM (
-SELECT
-    ma,bs,table_oid,
-    (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
-    (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
-FROM (
-    SELECT s.starelid as table_oid ,23 AS hdr, 8 AS ma, 8192 AS bs, SUM((1-stanullfrac)*stawidth) AS datawidth, MAX(stanullfrac) AS maxfracsum,
-    23 +( SELECT 1+count(*)/8  FROM pg_statistic s2 WHERE stanullfrac<>0 AND s.starelid = s2.starelid ) AS nullhdr
-    FROM pg_statistic s 
-    GROUP BY 1,2
-) AS foo
-) AS rs
-JOIN pg_class cc ON cc.oid = rs.table_oid
-JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema' 
-) TO stdin;
-\echo '\\.'
-
---Toast
-\echo COPY pg_get_toast FROM stdin;
-COPY (
-SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
-\echo '\\.'
-
 --bgwriter
 \echo COPY pg_get_bgwriter FROM stdin;
 COPY ( SELECT * FROM pg_stat_bgwriter ) TO stdout;
 \echo '\\.'
 
---active session again
-\a
-\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
+--Active session (again)
+\o /dev/null
 SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) g;
+\o
+\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
 \echo '\\.'
-\a

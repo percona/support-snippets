@@ -6,12 +6,15 @@
 \echo th {background-color: #d2f2ff;}
 \echo tr:nth-child(even) {background-color: #d2e2ff;}
 \echo th { cursor: pointer;}
+\echo caption { font-size: larger }
 \echo .warn { font-weight:bold; background-color: #FAA }
 \echo .lime { font-weight:bold}
 \echo .lineblk {float: left; margin:5px }
 \echo </style>
 \H
 \pset footer off 
+SET max_parallel_workers_per_gather = 0;
+
 \echo <h1>pg_gather Report <b id="busy" class="warn"> Loading... </b></h1>
 \pset tableattr 'class="lineblk"'
 SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines \gset
@@ -21,7 +24,7 @@ SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines
   \q
 \endif
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V9"
+        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V10"
 FROM pg_gather;
 SELECT replace(connstr,'You are connected to ','') "pg_gather Connection and PostgreSQL Server info" FROM pg_srvr; 
 \pset tableattr 'id="dbs"'
@@ -61,7 +64,8 @@ FROM pg_get_rel r
 JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')
 LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
-LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid; 
+LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
+ORDER BY r.tab_ind_size DESC LIMIT 10000; 
 \pset tableattr
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="indexes">Index Info</h2>
@@ -69,7 +73,8 @@ LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid;
 SELECT ct.relname AS "Table", ci.relname as "Index",indisunique,indisprimary,numscans,size
   FROM pg_get_index i 
   JOIN pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't'
-  JOIN pg_get_class ci ON i.indexrelid = ci.reloid;
+  JOIN pg_get_class ci ON i.indexrelid = ci.reloid
+ORDER BY size DESC LIMIT 10000;
 \pset tableattr 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="parameters">Parameters & settings</h2>
@@ -89,13 +94,15 @@ JOIN pg_get_roles on extowner=pg_get_roles.oid;
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="time">Database time</h2>
 \pset tableattr 'id="tableConten" name="waits"'
+\C 'Wait Events and CPU info'
 SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait GROUP BY 1 ORDER BY count(*) DESC;
+\C
 --session waits 
 \echo <a href="#topics">Go to Topics</a>
 \pset tableattr
 \echo <h2 id="sess" style="clear: both">Session Details</h2>
 SELECT * FROM (
-  WITH w AS (SELECT pid,wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
+  WITH w AS (SELECT pid,COALESCE(wait_event,'CPU') wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
   g AS (SELECT collect_ts FROM pg_gather)
   SELECT a.pid,a.state, left(query,60) "Last statement", g.collect_ts - backend_start "Connection Since",  g.collect_ts - query_start "Statement since",g.collect_ts - state_change "State since", string_agg( w.wait_event ||':'|| w.cnt,',') waits 
   FROM pg_get_activity a 
@@ -110,8 +117,10 @@ SELECT * FROM (
 SELECT * FROM pg_get_block;
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="statements" style="clear: both">Top 10 Statements</h2>
-\echo <p>Statements consuming highest database time. Consider information from pg_get_statements for other criteria</p>
-select query,total_time,calls from pg_get_statements order by 2 desc limit 10;
+
+\C 'Statements consuming highest database time. Consider information from pg_get_statements for other criteria'
+select query,total_time,calls from pg_get_statements order by 2 desc limit 10; 
+\C 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="bgcp" style="clear: both">Background Writer and Checkpointer Information</h2>
 \echo <p>Efficiency of Background writer and Checkpointer Process</p>
@@ -148,8 +157,29 @@ JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages';
 WITH W AS (SELECT COUNT(*) AS val FROM pg_get_activity WHERE state='idle in transaction')
 SELECT CASE WHEN val > 0 
   THEN 'There are '||val||' idle in transaction session(s) please check <a href= "#blocking" >blocking sessions</a> also<br>' 
-  ELSE 'No idle in transactions <br>' END 
+  ELSE 'No idle in transactions. Which is good <br>' END 
 FROM W; 
+WITH W AS (SELECT count(*) AS val from pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p'))
+SELECT CASE WHEN val > 10000
+  THEN 'There are <b>'||val||' tables!</b> in this database, Only the biggest 10000 will be listed in this report under <a href= "#tabInfo" >Tables Info</a>. Please use query No. 10. from the analysis_quries.sql for full details <br>'
+  ELSE NULL END
+FROM W;
+WITH W AS (select count(*) AS val from pg_get_index i join pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't')
+SELECT CASE WHEN val > 10000
+  THEN 'There are <b>'||val||' indexes!</b> in this database, Only biggest 10000 will be listed in this report under <a href= "#indexes" >Index Info</a>. Please use query No. 11. from the analysis_quries.sql for full details <br>'
+  ELSE NULL END
+FROM W;
+WITH W AS (
+SELECT string_agg(cnf.name ||'='||cnf.setting||' (Default:'||T.setting||')',',') as val FROM pg_get_confs cnf
+JOIN
+(VALUES ('block_size','8192'),('max_identifier_length','63'),('max_function_args','100'),('max_index_keys','32'),('segment_size','131072'),('wal_block_size','8192'),('wal_segment_size','16777216')) AS T (name,setting)
+ON cnf.name = T.name and cnf.setting != T.setting
+)
+SELECT CASE WHEN LENGTH(val) > 1
+  THEN 'Detected Non-Standard Compile-time parameter changes <b>'||val||' </b>. Custom Compilation is not fully supported and prone to bugs <br>'
+  ELSE NULL END
+FROM W;
+
 \echo <a href="#topics">Go to Topics</a>
 \echo <script type="text/javascript">
 \echo $(function() { $("#busy").hide(); });

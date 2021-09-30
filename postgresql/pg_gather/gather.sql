@@ -32,7 +32,10 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 \endif
 
 \echo COPY pg_gather FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V8',current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V10',current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),
+CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
+) TO stdin;
+
 \echo '\\.'
 
 \if :pg13
@@ -156,10 +159,12 @@ JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_
 ) TO stdin;
 \echo '\\.'
 
---Toast
 \echo COPY pg_get_toast FROM stdin;
-COPY (
-SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
+COPY (SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
+\echo '\\.'
+
+\echo COPY pg_get_extension FROM stdin;
+COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg_extension) TO stdout;
 \echo '\\.'
 
 \endif
@@ -227,4 +232,4 @@ SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) 
 \o
 \echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
-\echo '\\.'
+\echo '\\.\n'

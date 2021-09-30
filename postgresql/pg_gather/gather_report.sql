@@ -1,19 +1,20 @@
 \set QUIET 1
 \echo <html><meta charset="utf-8" />
-\echo <script type="text/javascript" src="http://mozigo.risko.org/js/graficarBarras.js"></script>
-\echo <script type="text/javascript" src="http://mozigo.risko.org/js/tabla2array.js"></script>
 \echo <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
 \echo <style>
 \echo table, th, td { border: 1px solid black; border-collapse: collapse; }
 \echo th {background-color: #d2f2ff;}
 \echo tr:nth-child(even) {background-color: #d2e2ff;}
 \echo th { cursor: pointer;}
+\echo caption { font-size: larger }
 \echo .warn { font-weight:bold; background-color: #FAA }
 \echo .lime { font-weight:bold}
 \echo .lineblk {float: left; margin:5px }
 \echo </style>
 \H
 \pset footer off 
+SET max_parallel_workers_per_gather = 0;
+
 \echo <h1>pg_gather Report <b id="busy" class="warn"> Loading... </b></h1>
 \pset tableattr 'class="lineblk"'
 SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines \gset
@@ -23,15 +24,16 @@ SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines
   \q
 \endif
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V8"
+        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V10"
 FROM pg_gather;
 SELECT replace(connstr,'You are connected to ','') "pg_gather Connection and PostgreSQL Server info" FROM pg_srvr; 
 \pset tableattr 'id="dbs"'
 SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_updated+tup_deleted transactions, blks_hit*100/blks_fetch  hit_ratio,temp_files,temp_bytes,db_size,age FROM pg_get_db where blks_fetch != 0;
 \pset tableattr off
 
-\echo <div>
-\echo <h2 style="clear: both">Your input about host resources </h2>
+\echo <button id="tog" style="display: block;clear: both">[+]</button>
+\echo <div id="divins" style="display:none">
+\echo <h2>Manual input about host resources</h2>
 \echo <p>You may input CPU and Memory in the host machine / vm which will be used for analysis</p>
 \echo  <label for="cpus">CPUs</label>
 \echo  <input type="number" id="cpus" name="cpus" value="8">
@@ -42,6 +44,7 @@ SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_u
 \echo <ol>
 \echo <li><a href="#indexes">Index Info</a></li>
 \echo <li><a href="#parameters">Parameter settings</a></li>
+\echo <li><a href="#extensions">Extensions</a></li>
 \echo <li><a href="#activiy">Session Summary</a></li>
 \echo <li><a href="#time">Database Time</a></li>
 \echo <li><a href="#sess">Session Details</a></li>
@@ -61,7 +64,8 @@ FROM pg_get_rel r
 JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')
 LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
-LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid; 
+LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
+ORDER BY r.tab_ind_size DESC LIMIT 10000; 
 \pset tableattr
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="indexes">Index Info</h2>
@@ -69,13 +73,18 @@ LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid;
 SELECT ct.relname AS "Table", ci.relname as "Index",indisunique,indisprimary,numscans,size
   FROM pg_get_index i 
   JOIN pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't'
-  JOIN pg_get_class ci ON i.indexrelid = ci.reloid;
+  JOIN pg_get_class ci ON i.indexrelid = ci.reloid
+ORDER BY size DESC LIMIT 10000;
 \pset tableattr 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="parameters">Parameters & settings</h2>
 \pset tableattr 'id="params"'
 SELECT * FROM pg_get_confs;
 \pset tableattr
+\echo <a href="#topics">Go to Topics</a>
+\echo <h2 id="extensions">Extensions</h2>
+SELECT ext.oid,extname,rolname as owner,extnamespace,extrelocatable,extversion FROM pg_get_extension ext
+JOIN pg_get_roles on extowner=pg_get_roles.oid; 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="activiy">Session Summary</h2>
 \pset footer off
@@ -84,19 +93,16 @@ SELECT * FROM pg_get_confs;
     WHERE state is not null GROUP BY 1,2 ORDER BY 1; 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="time">Database time</h2>
-\echo <canvas id="chart" width="800" height="480" style="border: 1px solid black; float:right; width:75% ">Canvas is not supported</canvas>
 \pset tableattr 'id="tableConten" name="waits"'
-WITH ses AS (SELECT COUNT (*) as tot, COUNT(*) FILTER (WHERE state is not null) working FROM pg_get_activity),
-    waits AS (SELECT wait_event ,count(*) cnt from pg_pid_wait group by wait_event)
-  SELECT '*CPU Estimate' "Event", working*2000 - (SELECT sum(cnt) FROM waits) "Count" FROM ses
-  UNION ALL
-  SELECT wait_event "Event", cnt "Count" FROM waits;
-  --session waits 
+\C 'Wait Events and CPU info'
+SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait GROUP BY 1 ORDER BY count(*) DESC;
+\C
+--session waits 
 \echo <a href="#topics">Go to Topics</a>
 \pset tableattr
 \echo <h2 id="sess" style="clear: both">Session Details</h2>
 SELECT * FROM (
-  WITH w AS (SELECT pid,wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
+  WITH w AS (SELECT pid,COALESCE(wait_event,'CPU') wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
   g AS (SELECT collect_ts FROM pg_gather)
   SELECT a.pid,a.state, left(query,60) "Last statement", g.collect_ts - backend_start "Connection Since",  g.collect_ts - query_start "Statement since",g.collect_ts - state_change "State since", string_agg( w.wait_event ||':'|| w.cnt,',') waits 
   FROM pg_get_activity a 
@@ -107,16 +113,15 @@ SELECT * FROM (
   GROUP BY 1,2,3,4,5,6) AS sess
   WHERE waits IS NOT NULL OR state != 'idle'; 
 \echo <a href="#topics">Go to Topics</a>
-
 \echo <h2 id="blocking" style="clear: both">Blocking Sessions</h2>
 SELECT * FROM pg_get_block;
 \echo <a href="#topics">Go to Topics</a>
-
 \echo <h2 id="statements" style="clear: both">Top 10 Statements</h2>
-\echo <p>Statements consuming highest database time. Consider information from pg_get_statements for other criteria</p>
-select query,total_time,calls from pg_get_statements order by 2 desc limit 10;
-\echo <a href="#topics">Go to Topics</a>
 
+\C 'Statements consuming highest database time. Consider information from pg_get_statements for other criteria'
+select query,total_time,calls from pg_get_statements order by 2 desc limit 10; 
+\C 
+\echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="bgcp" style="clear: both">Background Writer and Checkpointer Information</h2>
 \echo <p>Efficiency of Background writer and Checkpointer Process</p>
 SELECT round(checkpoints_req*100/tot_cp,1) "Forced Checkpoint %" ,
@@ -152,12 +157,38 @@ JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages';
 WITH W AS (SELECT COUNT(*) AS val FROM pg_get_activity WHERE state='idle in transaction')
 SELECT CASE WHEN val > 0 
   THEN 'There are '||val||' idle in transaction session(s) please check <a href= "#blocking" >blocking sessions</a> also<br>' 
-  ELSE 'No idle in transactions <br>' END 
+  ELSE 'No idle in transactions. Which is good <br>' END 
 FROM W; 
+WITH W AS (SELECT count(*) AS val from pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p'))
+SELECT CASE WHEN val > 10000
+  THEN 'There are <b>'||val||' tables!</b> in this database, Only the biggest 10000 will be listed in this report under <a href= "#tabInfo" >Tables Info</a>. Please use query No. 10. from the analysis_quries.sql for full details <br>'
+  ELSE NULL END
+FROM W;
+WITH W AS (select count(*) AS val from pg_get_index i join pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't')
+SELECT CASE WHEN val > 10000
+  THEN 'There are <b>'||val||' indexes!</b> in this database, Only biggest 10000 will be listed in this report under <a href= "#indexes" >Index Info</a>. Please use query No. 11. from the analysis_quries.sql for full details <br>'
+  ELSE NULL END
+FROM W;
+WITH W AS (
+SELECT string_agg(cnf.name ||'='||cnf.setting||' (Default:'||T.setting||')',',') as val FROM pg_get_confs cnf
+JOIN
+(VALUES ('block_size','8192'),('max_identifier_length','63'),('max_function_args','100'),('max_index_keys','32'),('segment_size','131072'),('wal_block_size','8192'),('wal_segment_size','16777216')) AS T (name,setting)
+ON cnf.name = T.name and cnf.setting != T.setting
+)
+SELECT CASE WHEN LENGTH(val) > 1
+  THEN 'Detected Non-Standard Compile-time parameter changes <b>'||val||' </b>. Custom Compilation is not fully supported and prone to bugs <br>'
+  ELSE NULL END
+FROM W;
+
 \echo <a href="#topics">Go to Topics</a>
 \echo <script type="text/javascript">
 \echo $(function() { $("#busy").hide(); });
 \echo $("input").change(function(){  alert("Number changed"); }); 
+\echo $("#tog").click(function(){
+\echo         $("#divins").toggle("slow",function(){
+\echo         if($("#divins").is(":visible")) $("#tog").text("[-]"); 
+\echo         else $("#tog").text("[+]"); 
+\echo     }) });
 \echo function bytesToSize(bytes,divisor = 1000) {
 \echo   const sizes = ["B","KB","MB","GB","TB"];
 \echo   if (bytes == 0) return "0B";
@@ -253,13 +284,17 @@ FROM W;
 \echo   IndSz.prop("title", bytesToSize(IndSz.html()));
 \echo   if (Number(IndSz.html()) > 2000000000)  IndSz.addClass("lime");
 \echo });
-\echo $(''''<thead></thead>'''').prependTo(''''#tableConten'''').append($(''''#tableConten tr:first''''));
-\echo  var misParam ={ miMargen : 0.80, separZonas : 0.05, tituloGraf : "Database Time", tituloEjeX : "Event",  tituloEjeY : "Count", nLineasDiv : 10,
-\echo  mysColores :[
-\echo                ["rgba(93,18,18,1)","rgba(196,19,24,1)"],  //red
-\echo                ["rgba(171,115,51,1)","rgba(251,163,1,1)"], //yellow
-\echo              ],
-\echo     anchoLinea : 2, };
-\echo    obtener_datos_tabla_convertir_en_array(''''tableConten'''',graficarBarras,''''chart'''',''''750'''',''''480'''',misParam,true);
+\echo maxevnt = Number($("#tableConten tr").eq(1).children().eq(1).text());
+\echo $("#tableConten tr").each(function(){
+\echo   evnts = $(this).children().eq(1);
+\echo   if (Number(evnts.html()) > 0 )  evnts.append(''''<div style="display:inline-block;width:' + Number(evnts.html())*1500/maxevnt + 'px; border: 7px outset brown">'''');
+\echo });
+\echo // var misParam ={ miMargen : 0.80, separZonas : 0.05, tituloGraf : "Database Time", tituloEjeX : "Event",  tituloEjeY : "Count", nLineasDiv : 10,
+\echo // mysColores :[
+\echo //               ["rgba(93,18,18,1)","rgba(196,19,24,1)"],  //red
+\echo //               ["rgba(171,115,51,1)","rgba(251,163,1,1)"], //yellow
+\echo //             ],
+\echo //    anchoLinea : 2, };
+\echo //  obtener_datos_tabla_convertir_en_array(''''tableConten'''',graficarBarras,''''chart'''',''''750'''',''''480'''',misParam,true);
 \echo </script>
 \echo </html>

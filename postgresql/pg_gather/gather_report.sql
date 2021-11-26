@@ -4,8 +4,9 @@
 \echo <style>
 \echo table, th, td { border: 1px solid black; border-collapse: collapse; }
 \echo th {background-color: #d2f2ff;}
-\echo tr:nth-child(even) {background-color: #d2e2ff;}
+\echo tr:nth-child(even) {background-color: #DAEDff}
 \echo th { cursor: pointer;}
+\echo tr:hover { background-color: #FFFFCA}
 \echo caption { font-size: larger }
 \echo .warn { font-weight:bold; background-color: #FAA }
 \echo .lime { font-weight:bold}
@@ -23,12 +24,13 @@ SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines
   "SOMETHING WENT WRONG WHILE IMPORTING THE DATA. PLEASE MAKE SURE THAT ALL TABLES ARE DROPPED AND RECREATED AS PART OF IMPORTING";
   \q
 \endif
+WITH TZ AS (SELECT set_config('timezone',setting,false) AS val FROM  pg_get_confs WHERE name='log_timezone')
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [collect_ts::text,usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V10"
-FROM pg_gather;
+        UNNEST(ARRAY [collect_ts::text||' ('||TZ.val||')',usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V11"
+FROM pg_gather JOIN TZ ON TRUE;
 SELECT replace(connstr,'You are connected to ','') "pg_gather Connection and PostgreSQL Server info" FROM pg_srvr; 
 \pset tableattr 'id="dbs"'
-SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_updated+tup_deleted transactions, blks_hit*100/blks_fetch  hit_ratio,temp_files,temp_bytes,db_size,age FROM pg_get_db where blks_fetch != 0;
+SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_updated+tup_deleted transactions, CASE WHEN blks_fetch > 0 THEN blks_hit*100/blks_fetch ELSE NULL END  hit_ratio,temp_files,temp_bytes,db_size,age FROM pg_get_db;
 \pset tableattr off
 
 \echo <button id="tog" style="display: block;clear: both">[+]</button>
@@ -54,17 +56,20 @@ SELECT datname DB,xact_commit commits,xact_rollback rollbacks,tup_inserted+tup_u
 \echo <li><a href="#findings">Important Findings</a></li>
 \echo </ol>
 \echo <h2>Tables Info</h2>
-\echo <p><b>NOTE : Rel size</b> is the  main fork size, <b>Tot.Tab size</b> includes all forks and toast, <b>Tab+Ind size</b> is tot_tab_size + all indexes</p>
+\echo <p><b>NOTE : Rel size</b> is the  main fork size, <b>Tot.Tab size</b> includes all forks and toast, <b>Tab+Ind size</b> is tot_tab_size + all indexes, *Bloat estimates are indicative numbers and they can be inaccurate<br />
+\echo Objects other than tables will be marked with their relkind in brackets</p>
 \pset footer on
 \pset tableattr 'id="tabInfo"'
-SELECT c.relname "Name",c.relkind "Kind",r.relnamespace "Schema",r.blks,r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
-r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,r.last_vac "Last vacuum",r.last_anlyze "Last analyze",r.vac_nos,
+SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END || CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN ' ('||(r.blks-tb.est_pages)*100/r.blks||'% bloat*)' ELSE '' END "Name" ,
+r.relnamespace "Schema",r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
+r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",r.vac_nos,
 ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
 FROM pg_get_rel r
 JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')
 LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
 LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
+LEFT JOIN pg_tab_bloat tb ON r.relid = tb.table_oid
 ORDER BY r.tab_ind_size DESC LIMIT 10000; 
 \pset tableattr
 \echo <a href="#topics">Go to Topics</a>
@@ -103,15 +108,15 @@ SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait GROUP
 \echo <h2 id="sess" style="clear: both">Session Details</h2>
 SELECT * FROM (
   WITH w AS (SELECT pid,COALESCE(wait_event,'CPU') wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
-  g AS (SELECT collect_ts FROM pg_gather)
-  SELECT a.pid,a.state, left(query,60) "Last statement", g.collect_ts - backend_start "Connection Since",  g.collect_ts - query_start "Statement since",g.collect_ts - state_change "State since", string_agg( w.wait_event ||':'|| w.cnt,',') waits 
+  g AS (SELECT MAX(state_change) as ts FROM pg_get_activity)
+  SELECT a.pid,a.state, left(query,60) "Last statement", g.ts - backend_start "Connection Since", g.ts - xact_start "Transaction Since",  g.ts - query_start "Statement since",g.ts - state_change "State since", string_agg( w.wait_event ||':'|| w.cnt,',') waits 
   FROM pg_get_activity a 
    LEFT JOIN w ON a.pid = w.pid
    LEFT JOIN (SELECT pid,sum(cnt) tot FROM w GROUP BY 1) s ON a.pid = s.pid
    LEFT JOIN g ON true
   WHERE a.state IS NOT NULL
-  GROUP BY 1,2,3,4,5,6) AS sess
-  WHERE waits IS NOT NULL OR state != 'idle'; 
+  GROUP BY 1,2,3,4,5,6,7) AS sess
+WHERE waits IS NOT NULL OR state != 'idle'; 
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="blocking" style="clear: both">Blocking Sessions</h2>
 SELECT * FROM pg_get_block;
@@ -138,8 +143,8 @@ round(buffers_alloc::numeric/total_buffers,3)  "New buffers ratio",
 round(100.0*buffers_checkpoint/total_buffers,1)  "Clean by checkpoints (%)",
 round(100.0*buffers_clean/total_buffers,1)   "Clean by bgwriter (%)",
 round(100.0*buffers_backend/total_buffers,1)  "Clean by backends (%)",
-round(100.0*maxwritten_clean/(min_since_reset*60000 / delay.setting::numeric),2)   "Bgwriter halts per runs(%)",
-coalesce(round(100.0*maxwritten_clean/(nullif(buffers_clean,0)/ lru.setting::numeric),2),0)  "Bgwriter halts due to LRU hit (%)"
+round(100.0*maxwritten_clean/(min_since_reset*60000 / delay.setting::numeric),2)   "Bgwriter halts (%) per runs (**1)",
+coalesce(round(100.0*maxwritten_clean/(nullif(buffers_clean,0)/ lru.setting::numeric),2),0)  "Bgwriter halt (%) due to LRU hit (**2)"
 FROM pg_get_bgwriter
 CROSS JOIN 
 (SELECT 
@@ -149,6 +154,7 @@ CROSS JOIN
     FROM pg_get_bgwriter) AS bg
 JOIN pg_get_confs delay ON delay.name = 'bgwriter_delay'
 JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages'; 
+\echo <p>**1 What percentage of bgwriter runs results in a halt, **2 What percentage of bgwriter halts are due to hitting on <code>bgwriter_lru_maxpages</code> limit</p>
 \echo <a href="#topics">Go to Topics</a>
 
 \echo <h2 id="findings" style="clear: both">Important Findings</h2>
@@ -243,15 +249,15 @@ FROM W;
 \echo }
 \echo checkpars();
 \echo $("#tabInfo tr").each(function(){
-\echo     $(this).find("td:nth-child(11),td:nth-child(18)").each(function(){ // Age >  autovacuum_freeze_max_age
+\echo     $(this).find("td:nth-child(9),td:nth-child(16)").each(function(){ // Age >  autovacuum_freeze_max_age, count column from 1
 \echo     if( Number($(this).html()) > autovacuum_freeze_max_age )
 \echo         $(this).addClass("warn").prop("title", "Age :" + Number($(this).html().trim()).toLocaleString("en-US") + "\n autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US") );
 \echo     });
-\echo     TotTab = $(this).children().eq(8);
+\echo     TotTab = $(this).children().eq(6);   //counting from 0
 \echo     TotTabSize = Number(TotTab.html());
 \echo     if( TotTabSize > 5000000000 ) TotTab.addClass("lime").prop("title", bytesToSize(TotTabSize) + "\nBig Table, Consider Partitioning, Archive+Purge" );
 \echo     else TotTab.prop("title",bytesToSize(TotTabSize));
-\echo     TabInd = $(this).children().eq(9);
+\echo     TabInd = $(this).children().eq(7);  //counting from 0
 \echo     TabIndSize = Number(TabInd.html());
 \echo     if(TabIndSize > TotTabSize*2 && TotTabSize > 2000000 )   //Tab above 20MB and with Index bigger than Tab
 \echo       TabInd.addClass("warn").prop("title", "Indexes of : " + bytesToSize(TabIndSize-TotTabSize) + " is " + ((TabIndSize-TotTabSize)/TotTabSize).toFixed(2) + "x of Table " +  bytesToSize(TotTabSize) + "\n Total : " + bytesToSize(TabIndSize));
@@ -289,12 +295,12 @@ FROM W;
 \echo   evnts = $(this).children().eq(1);
 \echo   if (Number(evnts.html()) > 0 )  evnts.append(''''<div style="display:inline-block;width:' + Number(evnts.html())*1500/maxevnt + 'px; border: 7px outset brown">'''');
 \echo });
-\echo // var misParam ={ miMargen : 0.80, separZonas : 0.05, tituloGraf : "Database Time", tituloEjeX : "Event",  tituloEjeY : "Count", nLineasDiv : 10,
-\echo // mysColores :[
-\echo //               ["rgba(93,18,18,1)","rgba(196,19,24,1)"],  //red
-\echo //               ["rgba(171,115,51,1)","rgba(251,163,1,1)"], //yellow
-\echo //             ],
-\echo //    anchoLinea : 2, };
-\echo //  obtener_datos_tabla_convertir_en_array(''''tableConten'''',graficarBarras,''''chart'''',''''750'''',''''480'''',misParam,true);
+\echo $(document).keydown(function(event) {  //Scroll to Index/Topics if Alt+I is pressed
+\echo     if (event.altKey && event.which === 73)
+\echo     {
+\echo       $("#topics").get(0).scrollIntoView();
+\echo       e.preventDefault();
+\echo     }
+\echo });
 \echo </script>
 \echo </html>

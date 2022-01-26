@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS pg_gather;
 DROP TABLE IF EXISTS pg_get_activity;
 DROP TABLE IF EXISTS pg_get_class;
 DROP TABLE IF EXISTS pg_get_confs;
+DROP TABLE IF EXISTS pg_get_file_confs;
 DROP TABLE IF EXISTS pg_get_db;
 DROP TABLE IF EXISTS pg_get_index;
 DROP TABLE IF EXISTS pg_get_rel;
@@ -125,9 +126,19 @@ CREATE UNLOGGED TABLE pg_get_roles (
 CREATE UNLOGGED TABLE pg_get_confs (
     name text,
     setting text,
-    unit text
+    unit text,
+    source text
 );
 
+CREATE UNLOGGED TABLE pg_get_file_confs (
+    sourcefile text,
+    name text,
+    setting text,
+    applied boolean,
+    error text
+);
+
+--TODO : Add relpersistence to the table for identifying the temporary tables
 CREATE UNLOGGED TABLE pg_get_class (
     reloid oid,
     relname text,
@@ -190,6 +201,7 @@ CREATE UNLOGGED TABLE pg_replication_stat (
     client_addr text,
     client_hostname text,
     state text,
+    --xmin_age int,
     sent_lsn pg_lsn,
     write_lsn pg_lsn,
     flush_lsn pg_lsn,

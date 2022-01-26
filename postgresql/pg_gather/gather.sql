@@ -1,6 +1,8 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
-
+-- pg_gather version
+\set ver 12
+\echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( current_database() != 'template1' ) as fullgather \gset
 
@@ -20,7 +22,13 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 --    \set FULL true
 --\endif
 
-\pset tuples_only
+\set QUIET on
+SET statement_timeout=60000;
+\t on
+PREPARE pidevents AS
+SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_activity WHERE state != 'idle' and pid != pg_backend_pid();
+\a
+\set QUIET off
 \echo '\\t'
 \echo '\\r'
 
@@ -32,10 +40,9 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 \endif
 
 \echo COPY pg_gather FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V11',current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),
 CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
-) TO stdin;
-
+) TO stdin; 
 \echo '\\.'
 
 \if :pg13
@@ -62,9 +69,6 @@ CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal
 
 --Wait Event Analysis
 --A much lightweight implimentation 26/12/2020
-PREPARE pidevents AS
-SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_activity WHERE state != 'idle' and pid != pg_backend_pid();
-\a
 \o /dev/null
 SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \o
@@ -113,13 +117,19 @@ COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,rolconfig from pg_
 \echo '\\.'
 
 --pg_settings
-\echo COPY pg_get_confs (name,setting,unit) FROM stdin;
-COPY ( SELECT name,setting,unit FROM pg_settings ) TO stdin;
+\echo COPY pg_get_confs (name,setting,unit,source) FROM stdin;
+COPY ( SELECT name,setting,unit,sourcefile FROM pg_settings) TO stdin;
+\echo '\\.'
+
+--pg_file_settings
+\echo COPY pg_get_file_confs (sourcefile,name,setting,applied,error) FROM stdin;
+COPY ( SELECT sourcefile,name,setting,applied,error FROM pg_file_settings) TO stdin;
 \echo '\\.'
 
 --Major tables and indexes in current schema
-\echo COPY pg_get_class FROM stdin;
-COPY (SELECT oid,relname,relkind,relnamespace FROM pg_class WHERE relnamespace NOT IN (SELECT oid FROM pg_namespace WHERE nspname like 'pg%_temp_%' OR nspname in ('pg_catalog','information_schema'))) TO stdin;
+--TODO : Add relpersistence to the list
+\echo COPY pg_get_class (reloid,relname,relkind,relnamespace) FROM stdin;
+COPY (SELECT oid,relname,relkind,relnamespace FROM pg_class WHERE relnamespace NOT IN (SELECT oid FROM pg_namespace WHERE nspname in ('pg_catalog','information_schema'))) TO stdin;
 \echo '\\.'
 
 --Index usage info
@@ -209,7 +219,7 @@ WHERE NOT blocked_locks.granted ORDER BY blocked_activity.pid ) TO stdin;
 \echo '\\.'
 
 --select * from pg_stat_replication;
-\echo COPY pg_replication_stat FROM stdin;
+\echo COPY pg_replication_stat(usename,client_addr,client_hostname,state,sent_lsn,write_lsn,flush_lsn,replay_lsn,sync_state) FROM stdin;
 COPY ( 
    SELECT usename, client_addr, client_hostname, state, sent_lsn, write_lsn, flush_lsn, replay_lsn, sync_state  FROM pg_stat_replication
 ) TO stdin;

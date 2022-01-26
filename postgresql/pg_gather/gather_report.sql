@@ -1,6 +1,6 @@
 \set QUIET 1
 \echo <html><meta charset="utf-8" />
-\echo <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+\echo <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 \echo <style>
 \echo table, th, td { border: 1px solid black; border-collapse: collapse; }
 \echo th {background-color: #d2f2ff;}
@@ -16,7 +16,14 @@
 \pset footer off 
 SET max_parallel_workers_per_gather = 0;
 
-\echo <h1>pg_gather Report <b id="busy" class="warn"> Loading... </b></h1>
+\echo <h1>
+\echo   <svg width="10em" viewBox="0 0 140 80">
+\echo     <path fill="none" stroke="#000000" stroke-linecap="round" stroke-width="2"  d="m 21.2,46.7 c 1,2 0.67,4 -0.3,5.1 c -1.1,1 -2,1.5 -4,1 c -10,-3 -4,-25 -4 -25 c 0.6,-10 8,-9 8 -9 s 7,-4.5 11,0.2 c 1.2,1.4 1.7,3.3 1.7,5.17 c -0.1,3 3,7 -2,10 c-2,2 -1,5 -8,5.5 m -2 -12 c 0,0 -1,1 -0.2,0.2 m -4 12 c 0,0 0,10 -12,11"/>
+\echo     <text x="30" y="50" style="font:25px arial">g_gather</text>
+\echo     <text x="75" y="62" style="fill:red; font:15px arial">Report</text>
+\echo    </svg>
+\echo    <b id="busy" class="warn"> Loading... </b>
+\echo </h1>
 \pset tableattr 'class="lineblk"'
 SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines \gset
 \if :conlines
@@ -26,7 +33,7 @@ SELECT (SELECT count(*) > 1 FROM pg_srvr WHERE connstr ilike 'You%') AS conlines
 \endif
 WITH TZ AS (SELECT set_config('timezone',setting,false) AS val FROM  pg_get_confs WHERE name='log_timezone')
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [collect_ts::text||' ('||TZ.val||')',usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V11"
+        UNNEST(ARRAY [collect_ts::text||' ('||TZ.val||')',usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report Version V12"
 FROM pg_gather JOIN TZ ON TRUE;
 SELECT replace(connstr,'You are connected to ','') "pg_gather Connection and PostgreSQL Server info" FROM pg_srvr; 
 \pset tableattr 'id="dbs"'
@@ -84,7 +91,9 @@ ORDER BY size DESC LIMIT 10000;
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="parameters">Parameters & settings</h2>
 \pset tableattr 'id="params"'
-SELECT * FROM pg_get_confs;
+SELECT s.*,string_agg(f.sourcefile ||' - '|| f.setting,chr(10)) As "Other locations" FROM pg_get_confs s
+LEFT JOIN pg_get_file_confs f ON s.name = f.name AND  s.source <> f.sourcefile
+GROUP BY 1,2,3,4 ORDER BY 1; 
 \pset tableattr
 \echo <a href="#topics">Go to Topics</a>
 \echo <h2 id="extensions">Extensions</h2>
@@ -185,7 +194,15 @@ SELECT CASE WHEN LENGTH(val) > 1
   THEN 'Detected Non-Standard Compile-time parameter changes <b>'||val||' </b>. Custom Compilation is not fully supported and prone to bugs <br>'
   ELSE NULL END
 FROM W;
+WITH W AS (
+SELECT count(*) cnt FROM pg_get_confs WHERE source IS NOT NULL )
+SELECT CASE WHEN cnt < 1
+  THEN 'Couldn''t detect values from configuration files. Possibly corrupt Parameter file(s)'
+  ELSE NULL END
+FROM W;
+SELECT 'ERROR :'||error ||': '||name||' with setting '||setting||' in '||sourcefile FROM pg_get_file_confs WHERE error IS NOT NULL;
 
+\echo <br />
 \echo <a href="#topics">Go to Topics</a>
 \echo <script type="text/javascript">
 \echo $(function() { $("#busy").hide(); });
@@ -205,44 +222,50 @@ FROM W;
 \echo autovacuum_freeze_max_age = 0; //Number($("#params td:contains('autovacuum_freeze_max_age')").parent().children().eq(1).text());
 \echo function checkpars(){   //parameter checking
 \echo $("#params tr").each(function(){
+\echo   let val=$(this).children().eq(1)
 \echo   switch($(this).children().eq(0).text()) {
+\echo     case "autovacuum" :
+\echo       if(val.text() != "on") val.addClass("warn");
+\echo       break;
 \echo     case "autovacuum_max_workers" :
-\echo       console.log($(this).children().eq(1).text());
+\echo       if(val.text() > 5) val.addClass("warn");
 \echo       break;
 \echo     case "autovacuum_vacuum_cost_limit" :
-\echo       console.log($(this).children().eq(1).text());
+\echo       if(val.text() > 500) val.addClass("warn");
+\echo       //console.log(val.text());
 \echo       break;
 \echo     case "autovacuum_freeze_max_age" :
-\echo       autovacuum_freeze_max_age = Number($(this).children().eq(1).text());
+\echo       autovacuum_freeze_max_age = Number(val.text());
+\echo       if (autovacuum_freeze_max_age > 800000000) val.addClass("warn");
 \echo       break;
 \echo     case "deadlock_timeout":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",$(this).children().eq(2).text());
+\echo       val.addClass("lime").prop("title",$(this).children().eq(2).text());
 \echo       break;
 \echo     case "effective_cache_size":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*8*1024,1024));
+\echo       val.addClass("lime").prop("title",bytesToSize(val.text()*8192,1024));
 \echo       break;
 \echo     case "maintenance_work_mem":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024,1024));
+\echo       val.addClass("lime").prop("title",bytesToSize(val.text()*1024,1024));
 \echo       break;
 \echo     case "work_mem":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024,1024));
+\echo       val.addClass("lime").prop("title",bytesToSize(val.text()*1024,1024));
 \echo       break;
 \echo     case "shared_buffers":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*8*1024,1024));
+\echo       val.addClass("lime").prop("title",bytesToSize(val.text()*8192,1024));
 \echo       break;
 \echo     case "max_connections":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",$(this).children().eq(1).text());
-\echo       if($(this).children().eq(1).text() > 500) $(this).children().eq(1).addClass("warn");
+\echo       val.addClass("lime").prop("title",val.text());
+\echo       if(val.text() > 500) val.addClass("warn");
 \echo       break;
 \echo     case "max_wal_size":
-\echo       $(this).children().eq(1).addClass("lime").prop("title",bytesToSize($(this).children().eq(1).text()*1024*1024,1024));
-\echo       if($(this).children().eq(1).text() < 10240) $(this).children().eq(1).addClass("warn");
+\echo       val.addClass("lime").prop("title",bytesToSize(val.text()*1024*1024,1024));
+\echo       if(val.text() < 10240) val.addClass("warn");
 \echo       break;
 \echo     case "random_page_cost":
-\echo       if($(this).children().eq(1).text() > 1.2) $(this).children().eq(1).addClass("warn");
+\echo       if(val.text() > 1.2) val.addClass("warn");
 \echo       break;
 \echo     case "server_version":
-\echo       $(this).children().eq(1).addClass("lime");
+\echo       val.addClass("lime");
 \echo       break;
 \echo   }
 \echo });

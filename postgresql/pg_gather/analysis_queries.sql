@@ -85,7 +85,15 @@ JOIN
 (VALUES ('block_size','8192'),('max_identifier_length','63'),('max_function_args','100'),('max_index_keys','32'),('segment_size','131072'),('wal_block_size','8192'),('wal_segment_size','16777216')) AS T (name,setting)
 ON cnf.name = T.name and cnf.setting != T.setting;
 
--- 13. Unused Indexes
+--13. Tables without Primary key
+SELECT ct.relname AS "Table", ct.relkind, ci.relname as "Index",indisunique,indisprimary,numscans,size
+  FROM  pg_get_class ct 
+  LEFT JOIN pg_get_index i on i.indrelid = ct.reloid and indisprimary = 't'
+  LEFT JOIN pg_get_class ci ON  ci.reloid = i.indexrelid
+WHERE ct.relkind not in  ('t','i','f','v','c')
+AND ci.relname IS NULL;
+
+-- 14. Unused Indexes
 --Create a index history table using the data from the first pg_gather
 CREATE TABLE pg_get_index_hist AS SELECT * FROM pg_get_index;
 --Add the data from the second, thired pg_gather to it
@@ -112,9 +120,8 @@ SELECT DATE_TRUNC('hour',collect_ts) date_hour,count(*) cnt FROM history.pg_get_
 
 ---Load over a perioid of time
 SELECT collect_ts,count(*) FILTER (WHERE state='active') as active,count(*) FILTER (WHERE state='idle in transaction') as idle_in_transaction,
-count(*) FILTER (WHERE state='idle') as idle,count(*) connections  FROM history.pg_get_activity GROUP by collect_ts ORDER BY 1;
+count(*) FILTER (WHERE state='idle') as idle,count(*) connections  FROM history.pg_get_activity GROUP by collect_ts ORDER BY 2 DESC;
 --Or use CAST(collect_ts as time) if data is for a single day
-
 
 --Wait events beween two periods
 WITH w AS (SELECT collect_ts,COALESCE(wait_event,'CPU') as wait_event,count(*) cnt FROM history.pg_pid_wait GROUP BY 1,2 ORDER BY 1,2)
@@ -123,7 +130,13 @@ FROM w
 WHERE w.collect_ts between '2022-01-03 16:46:01.213361+00' AND '2022-01-03 16:48:01.657648+00 '
 GROUP BY w.collect_ts;
 
---Session infomration
+--Major wait events
+SELECT COALESCE(wait_event,'CPU'),COUNT(*) FROM history.pg_pid_wait GROUP BY 1 ORDER BY 2;
+
+--Dump wait events over a time to CSV format
+psql "options='-c timezone=UTC'" -c "COPY (SELECT to_char(collect_ts,'YYYY-MM-DD HH24:MI'),COUNT(*) FROM history.pg_pid_wait WHERE wait_event='DataFileRead' GROUP BY 1 ORDER BY 1) TO stdout with CSV  DELIMITER ','" > datafileread.csv
+
+--Session information
 SELECT rolname,datname,state,count(*) from 
  history.pg_get_activity a 
  left join pg_get_roles r on a.usesysid = r.oid

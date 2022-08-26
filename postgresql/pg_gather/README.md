@@ -2,7 +2,7 @@
 This is a SQL-only script for gathering performance and configuration data from PostgreSQL databases.  
 And another SQL script for generating detailed HTML report from the collected data. Yes SQL-Only!
 
-**Supported Versions** : PostgreSQL 10, 11, 12 & 13  
+**Supported Versions** : PostgreSQL 10, 11, 12, 13 & 14  
 **Minimum support versions** : PostgreSQL 9.5, 9.6
 
 
@@ -117,6 +117,13 @@ $ ./generate_report.sh /tmp/out.txt /tmp/custom-name.html y
 Container df7b228a5a6a49586e5424e5fe7a2065d8be78e0ae3aa5cddd8658ee27f4790c left around
 Finished generating report in /tmp/custom-name.html
 ```
-
+# Advanced configurations
+## Timezone 
+By default, the `g_gather` report uses the same timezone of the server from the data is collected, because it considers the `log_timezone` paramter for generating the report. This helps to compare the PostgreSQL log entries with `pg_gather` report.
+However, this many not be right timezone for few users. especially when they use cloud hostings. The `pg_gather` allows to have a custom timezone by setting the environment variable `PG_GATHER_TIMEZONE` to override the default. For example,
+```
+export PG_GATHER_TIMEZONE='UTC'
+```
+Please use the timezone name or abbriviation available from `pg_timezone_names`
 # Demonstration
 [![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/k1pnXuJAl40/0.jpg)](https://www.youtube.com/watch?v=k1pnXuJAl40)

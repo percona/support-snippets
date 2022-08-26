@@ -197,12 +197,13 @@ CREATE UNLOGGED TABLE pg_get_block (
     blocking_xact_start timestamp with time zone
 );
 
+--TODO : Username, client_addr and client_hostname should go on the long term
 CREATE UNLOGGED TABLE pg_replication_stat (
     usename text,
     client_addr text,
     client_hostname text,
+    pid int,
     state text,
-    --xmin_age int,
     sent_lsn pg_lsn,
     write_lsn pg_lsn,
     flush_lsn pg_lsn,
@@ -227,8 +228,6 @@ CREATE UNLOGGED TABLE pg_get_toast(
 
 CREATE UNLOGGED TABLE pg_tab_bloat (
     table_oid oid,
-    tablename text,
-    relpages bigint,
     est_pages bigint
 );
 

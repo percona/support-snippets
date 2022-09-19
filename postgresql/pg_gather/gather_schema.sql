@@ -1,4 +1,6 @@
 --Schema for pg_gather
+\set QUIET 1
+\echo **Dropping pg_gather tables**
 set client_min_messages=ERROR;
 DROP TABLE IF EXISTS pg_gather;
 DROP TABLE IF EXISTS pg_get_activity;
@@ -8,7 +10,6 @@ DROP TABLE IF EXISTS pg_get_file_confs;
 DROP TABLE IF EXISTS pg_get_db;
 DROP TABLE IF EXISTS pg_get_index;
 DROP TABLE IF EXISTS pg_get_rel;
---DROP TABLE IF EXISTS pg_get_wait;
 DROP TABLE IF EXISTS pg_srvr;
 DROP TABLE IF EXISTS pg_get_block;
 DROP TABLE IF EXISTS pg_pid_wait;
@@ -20,7 +21,10 @@ DROP TABLE IF EXISTS pg_get_statements;
 DROP TABLE IF EXISTS pg_get_bgwriter;
 DROP TABLE IF EXISTS pg_get_roles;
 DROP TABLE IF EXISTS pg_get_extension;
+DROP TABLE IF EXISTS pg_get_slots;
+DROP TABLE IF EXISTS pg_get_ns;
 
+\echo **Creating pg_gather tables**
 CREATE UNLOGGED TABLE pg_srvr (
     connstr text
 );
@@ -254,8 +258,22 @@ CREATE UNLOGGED TABLE pg_get_extension(
     extversion text
 );
 
--- psql -X -f gather.sql > out.txt
--- sed -i '/^Pager/d; /^Tuples/d; /^Output/d; /^SELECT/d; /^PREPARE/d; /^$/d' out.txt; psql -f gather_schema.sql -f out.txt
+CREATE UNLOGGED TABLE pg_get_slots(
+    slot_name text,
+    plugin text,
+    slot_type text,
+    datoid oid,
+    temporary bool,
+    active bool,
+    active_pid int,
+    old_xmin xid,
+    catalog_xmin xid,
+    restart_lsn pg_lsn,
+    confirmed_flush_lsn pg_lsn
+);
 
----Report
--- psql -q -X -f gather_report.sql > out.html
+CREATE UNLOGGED TABLE pg_get_ns(
+   nsoid oid,
+   nsname text
+);
+\set QUIET 0

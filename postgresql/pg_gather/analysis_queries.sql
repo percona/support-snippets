@@ -20,11 +20,11 @@ GROUP BY ROLLUP(1,2)
 ORDER BY 1,2;
 
 --2.1 Details of a particular session
-SELECT a.*
+SELECT a.*, rolname "user",datname "database"
 FROM pg_get_activity a 
   join pg_get_roles on a.usesysid=pg_get_roles.oid
   join pg_get_db on a.datid = pg_get_db.datid
-WHERE PID=17204
+WHERE PID=7494;
 
 --3.Which session is at the top of the blocking
 SELECT blocking_pid,statement_in_blocking_process,count(*)
@@ -108,9 +108,19 @@ JOIN pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't'
 JOIN pg_get_class ci ON i.indexrelid = ci.reloid
 WHERE maxscan-minscan = 0;
 
+--15. WAL accumunation estimation due to WAL archive failure
+SELECT pg_size_pretty(sz) FROM (
+select  (
+  (('x'||lpad(split_part(current_wal::TEXT,'/', 1),8,'0'))::bit(32)::bigint - ('x'||substring(last_archived_wal,9,8))::bit(32)::bigint) * 255 * 16^6 + 
+  ('x'||lpad(split_part(current_wal::TEXT,'/', 2),8,'0'))::bit(32)::bigint - ('x'||substring(last_archived_wal,17,8))::bit(32)::bigint*16^6 
+)::bigint
+ as sz from pg_archiver_stat JOIN pg_gather ON TRUE
+) a;
+
 
 =======================HISTORY SCHEMA ANALYSIS=========================
 set timezone=UTC;
+SET timezone = '-7';
 --Start and End time of data collection
 SELECT min(collect_ts),max(collect_ts) FROM history.pg_get_activity ;
 --min and max of a particular hour : WHERE DATE_TRUNC('hour',collect_ts) = '2022-01-03 18:00:00+00';
@@ -118,17 +128,30 @@ SELECT min(collect_ts),max(collect_ts) FROM history.pg_get_activity ;
 --Inspect the continuity of data collection, whether there is any gap
 SELECT DATE_TRUNC('hour',collect_ts) date_hour,count(*) cnt FROM history.pg_get_activity GROUP BY DATE_TRUNC('hour',collect_ts) ORDER BY 1;
 
+--Difference between collections
+SELECT collect_ts,prev,collect_ts-prev FROM (
+select collect_ts, lag(collect_ts,1) OVER (ORDER BY collect_ts) as prev from history.pg_gather) a;
+
+
 ---Load over a perioid of time
 SELECT collect_ts,count(*) FILTER (WHERE state='active') as active,count(*) FILTER (WHERE state='idle in transaction') as idle_in_transaction,
 count(*) FILTER (WHERE state='idle') as idle,count(*) connections  FROM history.pg_get_activity GROUP by collect_ts ORDER BY 2 DESC;
 --Or use CAST(collect_ts as time) if data is for a single day
 
---Wait events beween two periods
+--Wait events between two periods
 WITH w AS (SELECT collect_ts,COALESCE(wait_event,'CPU') as wait_event,count(*) cnt FROM history.pg_pid_wait GROUP BY 1,2 ORDER BY 1,2)
 SELECT w.collect_ts,string_agg( w.wait_event ||':'|| w.cnt,',' ORDER BY w.cnt DESC) "wait events" 
 FROM w 
 WHERE w.collect_ts between '2022-01-03 16:46:01.213361+00' AND '2022-01-03 16:48:01.657648+00 '
 GROUP BY w.collect_ts;
+
+--Wait events over each data collection
+WITH w AS (SELECT collect_ts,COALESCE(wait_event,'CPU') as wait_event,count(*) cnt FROM history.pg_pid_wait GROUP BY 1,2 ORDER BY 1,2)
+SELECT w.collect_ts,string_agg( w.wait_event ||':'|| w.cnt,',' ORDER BY w.cnt DESC) "wait events" 
+FROM w JOIN (SELECT collect_ts-'1 seconds'::interval start_tm , collect_ts+'1 seconds'::interval end_tm FROM history.pg_gather) tm
+    ON w.collect_ts between tm.start_tm AND tm.end_tm
+GROUP BY w.collect_ts ORDER BY w.collect_ts;
+
 
 --Major wait events
 SELECT COALESCE(wait_event,'CPU'),COUNT(*) FROM history.pg_pid_wait GROUP BY 1 ORDER BY 2;

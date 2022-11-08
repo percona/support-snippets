@@ -48,13 +48,13 @@ SELECT * FROM
     ELSE  set_config('timezone',:'tzone',false) 
   END AS val)
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v16"
+        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v17"
 FROM pg_gather LEFT JOIN TZ ON TRUE 
 UNION
-SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v16" IS NOT NULL ORDER BY 1;
+SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v17" IS NOT NULL ORDER BY 1;
 \pset tableattr 'id="dbs" class="thidden"'
 WITH cts AS (SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) AS c_ts FROM pg_gather)
-SELECT datname "DB Name",to_jsonb(ROW(tup_inserted/days,tup_updated/days,tup_deleted/days))
+SELECT datname "DB Name",to_jsonb(ROW(tup_inserted/days,tup_updated/days,tup_deleted/days,to_char(stats_reset,'YYYY-MM-DD HH24-MI-SS')))
 ,xact_commit/days "Avg.Commits",xact_rollback/days "Avg.Rollbacks",(tup_inserted+tup_updated+tup_deleted)/days "Avg.DMLs", CASE WHEN blks_fetch > 0 THEN blks_hit*100/blks_fetch ELSE NULL END  "Cache hit ratio"
 ,temp_files/days "Avg.Temp Files",temp_bytes/days "Avg.Temp Bytes",db_size "DB size",age "Age"
 FROM pg_get_db LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats_reset))/86400)::bigint,1) as days FROM cts) AS lat1 ON TRUE;
@@ -96,9 +96,10 @@ FROM pg_get_db LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats
 \echo <p><b>NOTE : Rel size</b> is the  main fork size, <b>Tot.Tab size</b> includes all forks and toast, <b>Tab+Ind size</b> is tot_tab_size + all indexes, *Bloat estimates are indicative numbers and they can be inaccurate<br />
 \echo Objects other than tables will be marked with their relkind in brackets</p>
 \pset footer on
-\pset tableattr 'id="tabInfo"'
-SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END || CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN ' ('||(r.blks-tb.est_pages)*100/r.blks||'% bloat*)' ELSE '' END "Name" ,
-r.relnamespace "Schema",r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
+\pset tableattr 'id="tabInfo" class="thidden"'
+SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END "Name" ,
+to_jsonb(ROW(ns.nsname)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks||'%' ELSE '' END "Bloat*",
+r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
 r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",r.vac_nos,
 ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
 FROM pg_get_rel r
@@ -107,6 +108,7 @@ LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
 LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
 LEFT JOIN pg_tab_bloat tb ON r.relid = tb.table_oid
+LEFT JOIN pg_get_ns ns ON r.relnamespace = ns.nsoid
 ORDER BY r.tab_ind_size DESC LIMIT 10000; 
 \pset tableattr
 \echo <h2 id="indexes">Indexes</h2>
@@ -134,10 +136,11 @@ JOIN pg_get_roles on extowner=pg_get_roles.oid;
     WHERE state is not null GROUP BY 1,2 ORDER BY 1; 
 \echo <h2 id="time">Database time</h2>
 \pset tableattr 'id="tableConten" name="waits"'
-\C 'Wait Events and CPU info'
+\C 'Wait Events and CPU info.'
 SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait GROUP BY 1 ORDER BY count(*) DESC;
 \C
---session waits 
+
+\echo <a href="https://github.com/jobinau/pg_gather/blob/main/docs/waitevents.md">Wait Event Reference</a>
 \echo <h2 id="sess" style="clear: both">Session Details</h2>
 \pset tableattr 'id="tblsess"' 
 SELECT * FROM (
@@ -165,8 +168,8 @@ select query,total_time,calls from pg_get_statements order by 2 desc limit 10;
 WITH M AS (SELECT GREATEST((SELECT(current_wal) FROM pg_gather),(SELECT MAX(sent_lsn) FROM pg_replication_stat))),
   g AS (SELECT MAX(GREATEST(backend_xid::text::bigint,backend_xmin::text::bigint)) mx_xid FROM pg_get_activity)
 SELECT usename AS "Replication User",client_addr AS "Replica Address",pid,state,
- pg_wal_lsn_diff(M.greatest, sent_lsn) "Transmission Lag (Bytes)",pg_wal_lsn_diff(sent_lsn,write_lsn) "Remote Write lag(Bytes)",
- pg_wal_lsn_diff(write_lsn,flush_lsn) "Remote Flush lag(Bytes)",pg_wal_lsn_diff(flush_lsn,replay_lsn) "Remote Flush lag(Bytes)",
+ pg_wal_lsn_diff(M.greatest, sent_lsn) "Transmission Lag (Bytes)",pg_wal_lsn_diff(sent_lsn,write_lsn) "Replica Write lag(Bytes)",
+ pg_wal_lsn_diff(write_lsn,flush_lsn) "Replica Flush lag(Bytes)",pg_wal_lsn_diff(flush_lsn,replay_lsn) "Replay at Replica lag(Bytes)",
  slot_name "Slot",plugin,slot_type "Type",datname "DB name",temporary,active,GREATEST(g.mx_xid-old_xmin::text::bigint,0) as "xmin age",
  GREATEST(g.mx_xid-catalog_xmin::text::bigint,0) as "catalog xmin age", GREATEST(pg_wal_lsn_diff(M.greatest,restart_lsn),0) as "Restart LSN lag(Bytes)",
  GREATEST(pg_wal_lsn_diff(M.greatest,confirmed_flush_lsn),0) as "Confirmed LSN lag(Bytes)"
@@ -193,7 +196,8 @@ round(100.0*buffers_checkpoint/total_buffers,1)  "Clean by checkpoints (%)",
 round(100.0*buffers_clean/total_buffers,1)   "Clean by bgwriter (%)",
 round(100.0*buffers_backend/total_buffers,1)  "Clean by backends (%)",
 round(100.0*maxwritten_clean/(min_since_reset*60000 / delay.setting::numeric),2)   "Bgwriter halts (%) per runs (**1)",
-coalesce(round(100.0*maxwritten_clean/(nullif(buffers_clean,0)/ lru.setting::numeric),2),0)  "Bgwriter halt (%) due to LRU hit (**2)"
+coalesce(round(100.0*maxwritten_clean/(nullif(buffers_clean,0)/ lru.setting::numeric),2),0)  "Bgwriter halt (%) due to LRU hit (**2)",
+round(min_since_reset/(60*24),1) "Reset days"
 FROM pg_get_bgwriter
 CROSS JOIN 
 (SELECT 
@@ -201,8 +205,8 @@ CROSS JOIN
     GREATEST(buffers_checkpoint + buffers_clean + buffers_backend,1) total_buffers,
     checkpoints_timed+checkpoints_req tot_cp 
     FROM pg_get_bgwriter) AS bg
-JOIN pg_get_confs delay ON delay.name = 'bgwriter_delay'
-JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages'; 
+LEFT JOIN pg_get_confs delay ON delay.name = 'bgwriter_delay'
+LEFT JOIN pg_get_confs lru ON lru.name = 'bgwriter_lru_maxpages'; 
 \echo <p>**1 What percentage of bgwriter runs results in a halt, **2 What percentage of bgwriter halts are due to hitting on <code>bgwriter_lru_maxpages</code> limit</p>
 \echo <h2 id="findings" >Findings</h2>
 \echo <ol id="finditem" style="padding:2em;position:relative">
@@ -246,7 +250,7 @@ FROM W;
 WITH W AS (
 SELECT count(*) cnt FROM pg_get_confs WHERE source IS NOT NULL )
 SELECT CASE WHEN cnt < 1
-  THEN '<li>Couldn''t get parameter values from configuration files. Partial gather or corrupt Parameter file(s)</li>'
+  THEN '<li>Couldn''t get parameter values. Partial gather or corrupt Parameter file(s)</li>'
   ELSE NULL END
 FROM W;
 SELECT 'ERROR :'||error ||': '||name||' with setting '||setting||' in '||sourcefile FROM pg_get_file_confs WHERE error IS NOT NULL;
@@ -254,10 +258,11 @@ SELECT 'ERROR :'||error ||': '||name||' with setting '||setting||' in '||sourcef
 \echo </ol>
 \echo <div id="analdata" hidden>
 \pset format unaligned
---Ability to pass SQL ananlysis to report 
 SELECT to_jsonb(r) FROM
 (SELECT 
-  (SELECT count(*) from pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')) AS tabs,
+  (select recovery from pg_gather) AS clsr,
+  (SELECT to_jsonb(ROW(count(*),COUNT(*) FILTER (WHERE last_vac IS NULL),COUNT(*) FILTER (WHERE last_anlyze IS NULL))) 
+     from pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')) AS tabs,
   (SELECT to_jsonb(ROW(COUNT(*),COUNT(*) FILTER (WHERE CONN < interval '15 minutes' ) )) FROM 
   (WITH g AS (SELECT MAX(state_change) as ts FROM pg_get_activity)
   SELECT pid,g.ts - backend_start CONN
@@ -269,7 +274,14 @@ SELECT to_jsonb(r) FROM
   (SELECT  to_jsonb(ROW(count(*) FILTER (WHERE state='active' AND state IS NOT NULL), 
    count(*) FILTER (WHERE state='idle in transaction'), count(*) FILTER (WHERE state='idle'),
    count(*) FILTER (WHERE state IS NULL), count(*) FILTER (WHERE leader_pid IS NOT NULL) , count(*)))
-  FROM pg_get_activity) as sess
+  FROM pg_get_activity) as sess,
+  (WITH curdb AS (SELECT trim(both '\"' from substring(connstr from '\"[[:word:]]*\"')) "curdb" FROM pg_srvr WHERE connstr like '%to database%'),
+  cts AS (SELECT COALESCE((SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) FROM pg_gather),current_timestamp) AS c_ts)
+SELECT to_jsonb(ROW(curdb,stats_reset,c_ts,days)) FROM 
+curdb LEFT JOIN pg_get_db ON pg_get_db.datname=curdb.curdb
+LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats_reset))/86400)::bigint,1) as days FROM cts) AS lat1 ON TRUE
+LEFT JOIN cts ON true) as dbts,
+(SELECT json_agg(pg_get_ns) FROM  pg_get_ns WHERE nsoid > 16384 OR nsname='public') AS ns
 ) r;
 
 \echo </div>
@@ -303,6 +315,13 @@ SELECT to_jsonb(r) FROM
 \echo     document.getElementById("finditem").innerHTML += "<li>"+ str +"</li>"
 \echo   }
 \echo   if (obj.ptabs > 0) document.getElementById("finditem").innerHTML += "<li>"+ obj.ptabs +" Natively partitioned tables found. Tables section could contain partitions</li>";
+\echo  if(obj.clsr){
+\echo   document.getElementById("finditem").innerHTML += "<li>PostgreSQL is in Standby mode or in Recovery</li>";
+\echo  }else{
+\echo   if ( obj.tabs.f2 > 0 ) document.getElementById("finditem").innerHTML += "<li> <b>No vaccum info for " + obj.tabs.f2 + "</b> tables </li>";
+\echo   if ( obj.tabs.f3 > 0 ) document.getElementById("finditem").innerHTML += "<li> <b>No statistics available for " + obj.tabs.f3 + " tables</b>, query planning can go wrong </li>";
+\echo   if ( obj.tabs.f1 > 10000) document.getElementById("finditem").innerHTML += "<li> There are <b>" + obj.tabs.f1 + " tables</b> in the database. Only 10000 will be displayed in the report. Avoid too many tables in single database</li>";
+\echo  }
 \echo   //Add footer to database details table at the top
 \echo   var el=document.createElement("tfoot");
 \echo   el.innerHTML = "<th colspan='9'>**Averages are Per Day. Total DB size is : "+ bytesToSize(totdb) +"</th>";
@@ -365,6 +384,12 @@ SELECT to_jsonb(r) FROM
 \echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024);
 \echo         if(val.innerText > 98304) val.classList.add("warn");
 \echo         break;
+\echo       case "huge_pages":
+\echo         val.classList.add("lime");
+\echo         break;
+\echo       case "huge_page_size":
+\echo         val.classList.add("lime");
+\echo         break;
 \echo       case "checkpoint_timeout":
 \echo         if(val.innerText < 1200) { val.classList.add("warn"); val.title="Too small gap between checkpoints"}
 \echo         break;
@@ -391,6 +416,9 @@ SELECT to_jsonb(r) FROM
 \echo       case "random_page_cost":
 \echo         if(val.innerText > 1.2) val.classList.add("warn");
 \echo         break;
+\echo       case "jit":
+\echo         if (val.innerText=="on") { val.classList.add("warn"); val.title="JIT is reportedly causing high memory usage and even crashes in few cases. consider disabling it unless needed" }
+\echo         break;
 \echo       case "server_version":
 \echo         val.classList.add("lime");
 \echo         break;
@@ -409,10 +437,10 @@ SELECT to_jsonb(r) FROM
 \echo   const startTime =new Date().getTime();
 \echo   const trs=document.getElementById("tabInfo").rows
 \echo   const len=trs.length;
-\echo   [8,14,15].forEach(function(num){trs[0].cells[num].title="autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US")})
+\echo   [10,16,17].forEach(function(num){trs[0].cells[num].title="autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US")})
 \echo   for(var i=1;i<len;i++){
 \echo   //TODO : trs.forEach (convert the for loop to forEach if possible)
-\echo     tr=trs[i]; let TotTab=tr.cells[6]; TotTabSize=Number(TotTab.innerHTML); TabInd=tr.cells[7]; TabIndSize=(TabInd.innerHTML);
+\echo     tr=trs[i]; let TotTab=tr.cells[8]; TotTabSize=Number(TotTab.innerHTML); TabInd=tr.cells[9]; TabIndSize=(TabInd.innerHTML);
 \echo     if(TotTabSize > 5000000000 ) { TotTab.classList.add("lime"); TotTab.title = bytesToSize(TotTabSize) + "\nBig Table, Consider Partitioning, Archive+Purge"; 
 \echo     } else TotTab.title=bytesToSize(TotTabSize);
 \echo     //Tab above 20MB and with Index bigger than Tab
@@ -420,9 +448,16 @@ SELECT to_jsonb(r) FROM
 \echo     } else TabInd.title=bytesToSize(TabIndSize); 
 \echo     //Tab+Ind > 10GB
 \echo     if (TabIndSize > 10000000000) TabInd.classList.add("lime");
-\echo     aged(tr.cells[8]);
-\echo     aged(tr.cells[14]);
-\echo     aged(tr.cells[15]);
+\echo     //Check the TOAST size
+\echo     if (tr.cells[15].innerText > 10000) { 
+\echo       tr.cells[15].title=bytesToSize(Number(tr.cells[15].innerText)); 
+\echo       //if TOAST is more than 10GB
+\echo       if (tr.cells[15].innerText > 10737418240) tr.cells[15].classList.add("warn")
+\echo       else tr.cells[15].classList.add("lime")
+\echo     }
+\echo     aged(tr.cells[10]);
+\echo     aged(tr.cells[16]);
+\echo     aged(tr.cells[17]);
 \echo   }
 \echo const endTime = new Date().getTime();
 \echo console.log("time taken for checktabs :" + (endTime - startTime));
@@ -434,6 +469,7 @@ SELECT to_jsonb(r) FROM
 \echo   trs[0].cells[6].title="Average Temp generation Per Day"; trs[0].cells[7].title="Average Temp generation Per Day"; trs[0].cells[9].title="autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US");
 \echo   for(var i=1;i<len;i++){
 \echo     tr=trs[i];
+\echo     if(obj.dbts !== null && tr.cells[0].innerHTML == obj.dbts.f1) tr.cells[0].classList.add("lime");
 \echo     [7,8].forEach(function(num) {  if (tr.cells[num].innerText > 1048576) { tr.cells[num].classList.add("lime"); tr.cells[num].title=bytesToSize(tr.cells[num].innerText) } });
 \echo     totdb=totdb+Number(tr.cells[8].innerText);
 \echo     aged(tr.cells[9]);
@@ -457,14 +493,27 @@ SELECT to_jsonb(r) FROM
 \echo })));
 \echo function dbsdtls(th){
 \echo   let o=JSON.parse(th.cells[1].innerText);
-\echo   return "<b>" + th.cells[0].innerText + "</b><br/> Inserts per day : " + o.f1 + "<br/>Updates per day : " + o.f2 + "<br/>Deletes per day : " + o.f3 ;
+\echo   let str="";
+\echo   if(th.cells[0].classList.contains("lime")) str = "<br/>(pg_gather connected)";
+\echo   return "<b>" + th.cells[0].innerText + "</b>" + str + "<br/> Inserts per day : " + o.f1 + "<br/>Updates per day : " + o.f2 + "<br/>Deletes per day : " + o.f3 + "<br/>Stats Reset : " + o.f4 ;
+\echo }
+\echo function tabdtls(th){
+\echo   let o=JSON.parse(th.cells[1].innerText);
+\echo   let vac=th.cells[13].innerText;
+\echo   let ns=obj.ns.find(el => el.nsoid === JSON.parse(th.cells[2].innerText).toString());
+\echo   let str=""
+\echo   if (obj.dbts.f4 < 1) obj.dbts.f4 = 1;
+\echo   if (vac > 0) str="<br />Vaccums per day:" + Number(vac/obj.dbts.f4).toFixed(1);
+\echo   return "<b>" + th.cells[0].innerText + "</b><br/>Schema : " + ns.nsname + str;
 \echo }
 \echo document.querySelectorAll(".thidden tr td:first-child").forEach(td => td.addEventListener("mouseover", (() => {
 \echo   th=td.parentNode;
 \echo   tab=th.closest("table");
 \echo   var el=document.createElement("div");
 \echo   el.setAttribute("id", "dtls");
+\echo   el.setAttribute("align","left");
 \echo   if(tab.id=="dbs") el.innerHTML=dbsdtls(th);
+\echo   if(tab.id=="tabInfo") el.innerHTML=tabdtls(th);
 \echo   th.cells[2].appendChild(el);
 \echo })));
 \echo document.querySelectorAll(".thidden tr td:first-child").forEach(td => td.addEventListener("mouseout", (() => {

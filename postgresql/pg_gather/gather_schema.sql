@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS pg_get_file_confs;
 DROP TABLE IF EXISTS pg_get_db;
 DROP TABLE IF EXISTS pg_get_index;
 DROP TABLE IF EXISTS pg_get_rel;
+DROP TABLE IF EXISTS pg_pg_inherits;
 DROP TABLE IF EXISTS pg_srvr;
 DROP TABLE IF EXISTS pg_get_block;
 DROP TABLE IF EXISTS pg_pid_wait;
@@ -151,6 +152,11 @@ CREATE UNLOGGED TABLE pg_get_class (
     relnamespace oid
 );
 
+CREATE UNLOGGED TABLE pg_pg_inherits(
+    inhrelid oid,
+    inhparent oid
+);
+
 CREATE UNLOGGED TABLE pg_get_index (
     indexrelid oid,
     indrelid oid,
@@ -168,6 +174,10 @@ CREATE UNLOGGED TABLE pg_get_rel (
     blks bigint,
     n_live_tup bigint,
     n_dead_tup bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
     rel_size bigint,
     tot_tab_size bigint,
     tab_ind_size bigint,

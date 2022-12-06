@@ -1,7 +1,7 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 -- pg_gather version
-\set ver 17
+\set ver 18
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( current_database() != 'template1' ) as fullgather \gset
@@ -26,7 +26,7 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 SET statement_timeout=60000;
 \t on
 PREPARE pidevents AS
-SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_activity WHERE state != 'idle' and pid != pg_backend_pid();
+SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE state != 'idle' and pid != pg_backend_pid();
 \a
 \set QUIET off
 \echo '\\t'
@@ -39,7 +39,7 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_activity WHERE sta
 \echo '\\.'
 \endif
 
-\echo COPY pg_gather FROM stdin;
+\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,current_wal) FROM stdin;
 COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),
 CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
 ) TO stdin; 
@@ -57,10 +57,8 @@ CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal
 \copy (select * from  pg_stat_get_activity(NULL) where pid != pg_backend_pid()) to stdin
 \echo '\\.'
 
-
---A lightweight implimentation of wait event data capture
 \o /dev/null
-SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) g;
+SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \o
 \echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
@@ -123,7 +121,7 @@ COPY (SELECT oid,relname,relkind,relnamespace FROM pg_class WHERE relnamespace N
 \echo '\\.'
 
 --Index usage info
-\echo COPY pg_get_index FROM stdin;
+\echo COPY pg_get_index(indexrelid,indrelid,indisunique,indisprimary,numscans,size) FROM stdin;
 COPY (SELECT indexrelid,indrelid,indisunique,indisprimary, pg_stat_get_numscans(indexrelid),pg_table_size(indexrelid) from pg_index) TO stdin;
 \echo '\\.'
 
@@ -160,14 +158,17 @@ JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_
 ) TO stdin;
 \echo '\\.'
 
+--TOAST info
 \echo COPY pg_get_toast FROM stdin;
 COPY (SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
 \echo '\\.'
 
+--namespaces/schemas
 \echo COPY pg_get_ns(nsoid,nsname) FROM stdin;
 COPY (SELECT oid,nspname FROM pg_namespace) TO stdout;
 \echo '\\.'
 
+--Extensions present
 \echo COPY pg_get_extension FROM stdin;
 COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg_extension) TO stdout;
 \echo '\\.'
@@ -212,6 +213,11 @@ FROM  pg_catalog.pg_locks   blocked_locks
 WHERE NOT blocked_locks.granted ORDER BY blocked_activity.pid ) TO stdin;
 \echo '\\.'
 
+--Lock chain info
+\echo COPY pg_get_pidblock(victim_pid,blocking_pids) FROM stdin;
+COPY (SELECT pid,pg_blocking_pids(pid) FROM pg_stat_get_activity(NULL) WHERE wait_event_type = 'Lock') TO stdout;
+\echo '\\.'
+
 --Replication status
 --TODO replace with pg_stat_get_wal_senders()
 \echo COPY pg_replication_stat(usename,client_addr,client_hostname, pid, state,sent_lsn,write_lsn,flush_lsn,replay_lsn,sync_state) FROM stdin;
@@ -237,8 +243,15 @@ COPY ( SELECT * FROM pg_stat_bgwriter ) TO stdout;
 
 --Active session (again)
 \o /dev/null
-SELECT 'SELECT pg_sleep(0.01); EXECUTE pidevents;' FROM generate_series(1,1000) g;
+SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \o
 \echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
+\echo '\\.'
+
+--End Marker
+\echo COPY pg_gather_end(end_ts,end_lsn) FROM stdin;
+COPY ( SELECT current_timestamp,
+  CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
+) TO stdin;
 \echo '\\.\n'

@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS pg_get_rel;
 DROP TABLE IF EXISTS pg_get_inherits;
 DROP TABLE IF EXISTS pg_srvr;
 DROP TABLE IF EXISTS pg_get_block;
+DROP TABLE IF EXISTS pg_get_pidblock;
 DROP TABLE IF EXISTS pg_pid_wait;
 DROP TABLE IF EXISTS pg_replication_stat;
 DROP TABLE IF EXISTS pg_archiver_stat;
@@ -24,6 +25,7 @@ DROP TABLE IF EXISTS pg_get_roles;
 DROP TABLE IF EXISTS pg_get_extension;
 DROP TABLE IF EXISTS pg_get_slots;
 DROP TABLE IF EXISTS pg_get_ns;
+DROP TABLE IF EXISTS pg_gather_end;
 
 \echo **Creating pg_gather tables**
 CREATE UNLOGGED TABLE pg_srvr (
@@ -41,6 +43,11 @@ CREATE UNLOGGED TABLE pg_gather (
     server inet,
     reload_ts timestamp with time zone,
     current_wal pg_lsn
+);
+
+CREATE UNLOGGED TABLE pg_gather_end (
+    end_ts timestamp with time zone,
+    end_lsn pg_lsn
 );
 
 CREATE UNLOGGED TABLE pg_get_activity (
@@ -209,6 +216,12 @@ CREATE UNLOGGED TABLE pg_get_block (
     blocking_wait_event text,
     statement_in_blocking_process text,
     blocking_xact_start timestamp with time zone
+);
+
+
+CREATE UNLOGGED TABLE pg_get_pidblock(
+  victim_pid int,
+  blocking_pids int[]
 );
 
 --TODO : Username, client_addr and client_hostname should go on the long term

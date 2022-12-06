@@ -48,10 +48,10 @@ SELECT * FROM
     ELSE  set_config('timezone',:'tzone',false) 
   END AS val)
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v17"
+        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v18"
 FROM pg_gather LEFT JOIN TZ ON TRUE 
 UNION
-SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v17" IS NOT NULL ORDER BY 1;
+SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v18" IS NOT NULL ORDER BY 1;
 \pset tableattr 'id="dbs" class="thidden"'
 WITH cts AS (SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) AS c_ts FROM pg_gather)
 SELECT datname "DB Name",to_jsonb(ROW(tup_inserted/days,tup_updated/days,tup_deleted/days,to_char(stats_reset,'YYYY-MM-DD HH24-MI-SS')))
@@ -98,7 +98,7 @@ FROM pg_get_db LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats
 \pset footer on
 \pset tableattr 'id="tabInfo" class="thidden"'
 SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END "Name" ,
-to_jsonb(ROW(ns.nsname)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks||'%' ELSE '' END "Bloat*",
+to_jsonb(ROW(r.n_tup_ins,r.n_tup_upd,r.n_tup_del,r.n_tup_hot_upd)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks||'%' ELSE '' END "Bloat*",
 r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
 r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",r.vac_nos,
 ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
@@ -121,8 +121,9 @@ ORDER BY size DESC LIMIT 10000;
 \pset tableattr 
 \echo <h2 id="parameters">Parameters & settings</h2>
 \pset tableattr 'id="params"'
-SELECT s.*,string_agg(f.sourcefile ||' - '|| f.setting,chr(10)) As "Other locations" FROM pg_get_confs s
-LEFT JOIN pg_get_file_confs f ON s.name = f.name AND  s.source <> f.sourcefile
+SELECT coalesce(s.name,f.name) "Name",s.setting,s.unit,s.source, 
+string_agg(f.sourcefile ||' - '|| f.setting || CASE WHEN f.applied = true THEN ' (applicable)' ELSE '' END ,chr(10)) FILTER (WHERE s.source != f.sourcefile OR s.source IS NULL ) AS "Other locations"
+FROM pg_get_confs s FULL OUTER JOIN pg_get_file_confs f ON lower(s.name) = lower(f.name)
 GROUP BY 1,2,3,4 ORDER BY 1; 
 \pset tableattr
 \echo <h2 id="extensions">Extensions</h2>
@@ -264,8 +265,8 @@ SELECT to_jsonb(r) FROM
   (SELECT to_jsonb(ROW(count(*),COUNT(*) FILTER (WHERE last_vac IS NULL),COUNT(*) FILTER (WHERE last_anlyze IS NULL))) 
      from pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p')) AS tabs,
   (SELECT to_jsonb(ROW(COUNT(*),COUNT(*) FILTER (WHERE CONN < interval '15 minutes' ) )) FROM 
-  (WITH g AS (SELECT MAX(state_change) as ts FROM pg_get_activity)
-  SELECT pid,g.ts - backend_start CONN
+    (WITH g AS (SELECT MAX(state_change) as ts FROM pg_get_activity)
+    SELECT pid,g.ts - backend_start CONN
     FROM pg_get_activity
     LEFT JOIN g ON true
     WHERE EXISTS (SELECT pid FROM pg_pid_wait WHERE pid=pg_get_activity.pid)
@@ -274,14 +275,18 @@ SELECT to_jsonb(r) FROM
   (SELECT  to_jsonb(ROW(count(*) FILTER (WHERE state='active' AND state IS NOT NULL), 
    count(*) FILTER (WHERE state='idle in transaction'), count(*) FILTER (WHERE state='idle'),
    count(*) FILTER (WHERE state IS NULL), count(*) FILTER (WHERE leader_pid IS NOT NULL) , count(*)))
-  FROM pg_get_activity) as sess,
-  (WITH curdb AS (SELECT trim(both '\"' from substring(connstr from '\"[[:word:]]*\"')) "curdb" FROM pg_srvr WHERE connstr like '%to database%'),
-  cts AS (SELECT COALESCE((SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) FROM pg_gather),current_timestamp) AS c_ts)
-SELECT to_jsonb(ROW(curdb,stats_reset,c_ts,days)) FROM 
-curdb LEFT JOIN pg_get_db ON pg_get_db.datname=curdb.curdb
-LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats_reset))/86400)::bigint,1) as days FROM cts) AS lat1 ON TRUE
-LEFT JOIN cts ON true) as dbts,
-(SELECT json_agg(pg_get_ns) FROM  pg_get_ns WHERE nsoid > 16384 OR nsname='public') AS ns
+   FROM pg_get_activity) as sess,
+  (WITH curdb AS (SELECT trim(both '\"' from substring(connstr from '\"\w*\"')) "curdb" FROM pg_srvr WHERE connstr like '%to database%'),
+    cts AS (SELECT COALESCE((SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) FROM pg_gather),current_timestamp) AS c_ts)
+    SELECT to_jsonb(ROW(curdb,stats_reset,c_ts,days)) FROM 
+    curdb LEFT JOIN pg_get_db ON pg_get_db.datname=curdb.curdb
+    LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats_reset))/86400)::bigint,1) as days FROM cts) AS lat1 ON TRUE
+    LEFT JOIN cts ON true) as dbts,
+  (SELECT json_agg(pg_get_ns) FROM  pg_get_ns WHERE nsoid > 16384 OR nsname='public') AS ns,
+  (SELECT to_jsonb((collect_ts-last_failed_time) < '5 minute' :: interval) FROM pg_gather,pg_archiver_stat) AS arcfail,
+  (SELECT to_jsonb(setting) FROM pg_get_confs WHERE name = 'archive_library') AS arclib,
+  (SELECT CASE WHEN max(stats_reset)-min(stats_reset) < '2 minute' :: interval THEN min(stats_reset) ELSE NULL END 
+  FROM (SELECT stats_reset FROM pg_get_db UNION SELECT stats_reset FROM pg_get_bgwriter) reset) crash
 ) r;
 
 \echo </div>
@@ -306,25 +311,30 @@ LEFT JOIN cts ON true) as dbts,
 \echo   document.getElementById("busy").style="display:none";
 \echo };
 \echo function checkfindings(){
+\echo   let strfind = "";
 \echo   if (obj.cn.f1 > 0){
-\echo     str="<b>" + obj.cn.f2 + " / " + obj.cn.f1 + " connections </b> in use are new. "
+\echo     strfind="<li><b>" + obj.cn.f2 + " / " + obj.cn.f1 + " connections </b> in use are new. "
 \echo     if (obj.cn.f2 > 9 || obj.cn.f2/obj.cn.f1 > 0.7 ){
-\echo       str=str+"Please consider this for improving connection pooling"
+\echo       strfind+="Please consider this for improving connection pooling"
 \echo     } 
-\echo     //$("#finditem").append("<li>"+ str +"</li>")
-\echo     document.getElementById("finditem").innerHTML += "<li>"+ str +"</li>"
+\echo     strfind += "</li>";
 \echo   }
-\echo   if (obj.ptabs > 0) document.getElementById("finditem").innerHTML += "<li>"+ obj.ptabs +" Natively partitioned tables found. Tables section could contain partitions</li>";
+\echo   if (obj.ptabs > 0) strfind += "<li>"+ obj.ptabs +" Natively partitioned tables found. Tables section could contain partitions</li>";
 \echo  if(obj.clsr){
-\echo   document.getElementById("finditem").innerHTML += "<li>PostgreSQL is in Standby mode or in Recovery</li>";
+\echo   strfind += "<li>PostgreSQL is in Standby mode or in Recovery</li>";
 \echo  }else{
-\echo   if ( obj.tabs.f2 > 0 ) document.getElementById("finditem").innerHTML += "<li> <b>No vaccum info for " + obj.tabs.f2 + "</b> tables </li>";
-\echo   if ( obj.tabs.f3 > 0 ) document.getElementById("finditem").innerHTML += "<li> <b>No statistics available for " + obj.tabs.f3 + " tables</b>, query planning can go wrong </li>";
-\echo   if ( obj.tabs.f1 > 10000) document.getElementById("finditem").innerHTML += "<li> There are <b>" + obj.tabs.f1 + " tables</b> in the database. Only 10000 will be displayed in the report. Avoid too many tables in single database</li>";
+\echo   if ( obj.tabs.f2 > 0 ) strfind += "<li> <b>No vaccum info for " + obj.tabs.f2 + "</b> tables </li>";
+\echo   if ( obj.tabs.f3 > 0 ) strfind += "<li> <b>No statistics available for " + obj.tabs.f3 + " tables</b>, query planning can go wrong </li>";
+\echo   if ( obj.tabs.f1 > 10000) strfind += "<li> There are <b>" + obj.tabs.f1 + " tables</b> in the database. Only 10000 will be displayed in the report. Avoid too many tables in single database</li>";
+\echo   if (obj.arcfail) strfind += "<li>WAL archiving is suspected to be <b>failing</b>, please check PG logs</li>";
+\echo   if (obj.crash) strfind += "<li><b>Crash detected around "+ obj.crash +"</b>, please check PG logs</li>";
+\echo   let tempNScnt = obj.ns.filter(n => n.nsname.indexOf("pg_temp") > -1).length;
+\echo   strfind += "<li> There are <b>" + (obj.ns.length - tempNScnt).toString()  + " user schemas and " + tempNScnt + " temporary schema</b> in this database.</li>";
+\echo   document.getElementById("finditem").innerHTML += strfind;
 \echo  }
 \echo   //Add footer to database details table at the top
 \echo   var el=document.createElement("tfoot");
-\echo   el.innerHTML = "<th colspan='9'>**Averages are Per Day. Total DB size is : "+ bytesToSize(totdb) +"</th>";
+\echo   el.innerHTML = "<th colspan='9'>**Averages are Per Day. Total size of "+ (document.getElementById("dbs").tBodies[0].rows.length - 1) +" DBs : "+ bytesToSize(totdb) +"</th>";
 \echo   dbs=document.getElementById("dbs");
 \echo   dbs.appendChild(el);
 \echo   //Add footer to Sessions Summary table
@@ -358,6 +368,9 @@ LEFT JOIN cts ON true) as dbts,
 \echo   for(var i=1;i<trs.length;i++){
 \echo     tr=trs[i]; nm=tr.cells[0]; val=tr.cells[1];
 \echo     switch(nm.innerText){
+\echo       case "archive_command" :
+\echo         if (obj.arclib !== null && obj.arclib.length > 0) { val.classList.add("warn"); val.title="archive_command won't be in-effect, because archive_library : " + obj.arclib + " is specified"  }
+\echo         break;
 \echo       case "autovacuum" :
 \echo         if(val.innerText != "on") { val.classList.add("warn"); val.title="Autovacuum must be on" }
 \echo         break;
@@ -448,6 +461,8 @@ LEFT JOIN cts ON true) as dbts,
 \echo     } else TabInd.title=bytesToSize(TabIndSize); 
 \echo     //Tab+Ind > 10GB
 \echo     if (TabIndSize > 10000000000) TabInd.classList.add("lime");
+\echo     //Check vacuum frequncy
+\echo     if (tr.cells[13].innerText / obj.dbts.f4 > 12) tr.cells[13].classList.add("warn");  tr.cells[13].title="Too frequent vacuum runs : " + Math.round(tr.cells[13].innerText / obj.dbts.f4) + "/day";
 \echo     //Check the TOAST size
 \echo     if (tr.cells[15].innerText > 10000) { 
 \echo       tr.cells[15].title=bytesToSize(Number(tr.cells[15].innerText)); 
@@ -471,6 +486,7 @@ LEFT JOIN cts ON true) as dbts,
 \echo     tr=trs[i];
 \echo     if(obj.dbts !== null && tr.cells[0].innerHTML == obj.dbts.f1) tr.cells[0].classList.add("lime");
 \echo     [7,8].forEach(function(num) {  if (tr.cells[num].innerText > 1048576) { tr.cells[num].classList.add("lime"); tr.cells[num].title=bytesToSize(tr.cells[num].innerText) } });
+\echo     if(tr.cells[7].innerHTML > 50000000000) tr.cells[7].classList.add("warn");
 \echo     totdb=totdb+Number(tr.cells[8].innerText);
 \echo     aged(tr.cells[9]);
 \echo   }  
@@ -503,7 +519,16 @@ LEFT JOIN cts ON true) as dbts,
 \echo   let ns=obj.ns.find(el => el.nsoid === JSON.parse(th.cells[2].innerText).toString());
 \echo   let str=""
 \echo   if (obj.dbts.f4 < 1) obj.dbts.f4 = 1;
-\echo   if (vac > 0) str="<br />Vaccums per day:" + Number(vac/obj.dbts.f4).toFixed(1);
+\echo   if (vac > 0) str="<br />Vacuums / day : " + Number(vac/obj.dbts.f4).toFixed(1);
+\echo   str += "<br/>Inserts / day : " + Math.round(o.f1/obj.dbts.f4);
+\echo   str += "<br/>Updates / day : " + Math.round(o.f2/obj.dbts.f4);
+\echo   str += "<br/>Deletes / day : " + Math.round(o.f3/obj.dbts.f4);
+\echo   str += "<br/>HOT.updates / day : " + Math.round(o.f4/obj.dbts.f4);
+\echo   if (o.f2 > 0) str += "<br/>FILLFACTOR recommendation :" + Math.round(100 - 20*o.f2/(o.f2+o.f1)+ 20*o.f2*o.f4/((o.f2+o.f1)*o.f2));
+\echo   if (vac/obj.dbts.f4 > 50) { 
+\echo     let threshold = Math.round((Math.round(o.f2/obj.dbts.f4) + Math.round(o.f3/obj.dbts.f4))/48);
+\echo     str += "<br/>AUTOVACUUM recommendation : autovacuum_vacuum_threshold = "+ threshold +", autovacuum_analyze_threshold = " + threshold
+\echo   }
 \echo   return "<b>" + th.cells[0].innerText + "</b><br/>Schema : " + ns.nsname + str;
 \echo }
 \echo document.querySelectorAll(".thidden tr td:first-child").forEach(td => td.addEventListener("mouseover", (() => {

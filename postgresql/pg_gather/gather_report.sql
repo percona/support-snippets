@@ -48,10 +48,10 @@ SELECT * FROM
     ELSE  set_config('timezone',:'tzone',false) 
   END AS val)
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN']) AS pg_gather,
-        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v18"
+        UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,current_wal::text]) AS "Report-v19"
 FROM pg_gather LEFT JOIN TZ ON TRUE 
 UNION
-SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v18" IS NOT NULL ORDER BY 1;
+SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report-v19" IS NOT NULL ORDER BY 1;
 \pset tableattr 'id="dbs" class="thidden"'
 WITH cts AS (SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) AS c_ts FROM pg_gather)
 SELECT datname "DB Name",to_jsonb(ROW(tup_inserted/days,tup_updated/days,tup_deleted/days,to_char(stats_reset,'YYYY-MM-DD HH24-MI-SS')))
@@ -98,7 +98,7 @@ FROM pg_get_db LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-stats
 \pset footer on
 \pset tableattr 'id="tabInfo" class="thidden"'
 SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END "Name" ,
-to_jsonb(ROW(r.n_tup_ins,r.n_tup_upd,r.n_tup_del,r.n_tup_hot_upd)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks||'%' ELSE '' END "Bloat*",
+to_jsonb(ROW(r.n_tup_ins,r.n_tup_upd,r.n_tup_del,r.n_tup_hot_upd)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks ELSE NULL END "Bloat%",
 r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
 r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",r.vac_nos,
 ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
@@ -138,22 +138,22 @@ JOIN pg_get_roles on extowner=pg_get_roles.oid;
 \echo <h2 id="time">Database time</h2>
 \pset tableattr 'id="tableConten" name="waits"'
 \C 'Wait Events and CPU info.'
-SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait GROUP BY 1 ORDER BY count(*) DESC;
+SELECT COALESCE(wait_event,'CPU') "Event", count(*)::text FROM pg_pid_wait
+WHERE wait_event IS NULL OR wait_event NOT IN ('ArchiverMain','AutoVacuumMain','BgWriterHibernate','BgWriterMain','CheckpointerMain','LogicalApplyMain','LogicalLauncherMain','RecoveryWalStream','SysLoggerMain','WalReceiverMain','WalSenderMain','WalWriterMain','CheckpointWriteDelay','PgSleep')
+GROUP BY 1 ORDER BY count(*) DESC;
 \C
 
-\echo <a href="https://github.com/jobinau/pg_gather/blob/main/docs/waitevents.md">Wait Event Reference</a>
 \echo <h2 id="sess" style="clear: both">Session Details</h2>
 \pset tableattr 'id="tblsess"' 
 SELECT * FROM (
   WITH w AS (SELECT pid,COALESCE(wait_event,'CPU') wait_event,count(*) cnt FROM pg_pid_wait GROUP BY 1,2 ORDER BY 1,2),
   g AS (SELECT MAX(state_change) as ts,MAX(GREATEST(backend_xid::text::bigint,backend_xmin::text::bigint)) mx_xid FROM pg_get_activity)
-  SELECT a.pid,a.state, CASE query WHEN '' THEN '**'||backend_type||' process**' ELSE left(query,60) END "Last statement", g.ts - backend_start "Connection Since", g.ts - xact_start "Transaction Since", g.mx_xid - backend_xmin::text::bigint "xmin age",
+  SELECT a.pid,a.state, CASE query WHEN '' THEN '**'||backend_type||' process**' ELSE query END "Last statement", g.ts - backend_start "Connection Since", g.ts - xact_start "Transaction Since", g.mx_xid - backend_xmin::text::bigint "xmin age",
    g.ts - query_start "Statement since",g.ts - state_change "State since", string_agg( w.wait_event ||':'|| w.cnt,',') waits 
   FROM pg_get_activity a 
    LEFT JOIN w ON a.pid = w.pid
    LEFT JOIN (SELECT pid,sum(cnt) tot FROM w GROUP BY 1) s ON a.pid = s.pid
    LEFT JOIN g ON true
-  WHERE a.state IS NOT NULL
   GROUP BY 1,2,3,4,5,6,7,8 ORDER BY 6 DESC NULLS LAST) AS sess
 WHERE waits IS NOT NULL OR state != 'idle'; 
 \echo <h2 id="blocking" style="clear: both">Blocking Sessions</h2>
@@ -286,23 +286,48 @@ SELECT to_jsonb(r) FROM
   (SELECT to_jsonb((collect_ts-last_failed_time) < '5 minute' :: interval) FROM pg_gather,pg_archiver_stat) AS arcfail,
   (SELECT to_jsonb(setting) FROM pg_get_confs WHERE name = 'archive_library') AS arclib,
   (SELECT CASE WHEN max(stats_reset)-min(stats_reset) < '2 minute' :: interval THEN min(stats_reset) ELSE NULL END 
-  FROM (SELECT stats_reset FROM pg_get_db UNION SELECT stats_reset FROM pg_get_bgwriter) reset) crash
+  FROM (SELECT stats_reset FROM pg_get_db UNION SELECT stats_reset FROM pg_get_bgwriter) reset) crash,
+  (WITH blockers AS (select array_agg(victim_pid) OVER () victim,blocking_pids blocker from pg_get_pidblock),
+   ublokers as (SELECT unnest(blocker) AS blkr FROM blockers)
+   SELECT json_agg(blkr) FROM ublokers
+   WHERE NOT EXISTS (SELECT 1 FROM blockers WHERE ublokers.blkr = ANY(victim))) blkrs,
+  (select json_agg((victim_pid,blocking_pids)) from pg_get_pidblock) victims,
+  (select to_jsonb((EXTRACT(epoch FROM (end_ts-collect_ts)),pg_wal_lsn_diff(end_lsn,current_wal)*60*60/EXTRACT(epoch FROM (end_ts-collect_ts)))) 
+  from pg_gather,pg_gather_end) sumry,
+  (SELECT json_agg((relname,maint_work_mem_gb)) FROM (SELECT relname,n_live_tup*0.2*6 maint_work_mem_gb 
+   FROM pg_get_rel JOIN pg_get_class ON n_live_tup > 894784853 AND pg_get_rel.relid = pg_get_class.reloid 
+   ORDER BY 2 DESC LIMIT 3) AS wmemuse) wmemuse
 ) r;
 
 \echo </div>
 \echo </div> <!--End of "sections"-->
-\echo <footer>End of <a href="https://github.com/jobinau/pg_gather">pgGather</a> Report</footer>
 \echo <script type="text/javascript">
 \echo obj={};
+\echo meta={pgvers:["11.19","12.14","13.10","14.7","15.2"]};
+\echo mgrver="";
+\echo walcomprz="";
 \echo autovacuum_freeze_max_age = 0;
 \echo totdb=0;
 \echo totCPU=0;
 \echo totMem=0;
+\echo let blokers = []
+\echo let blkvictims = []
 \echo document.addEventListener("DOMContentLoaded", () => {
 \echo obj=JSON.parse( document.getElementById("analdata").innerText);
+\echo if (obj.victims !== null){
+\echo obj.victims.forEach(function(victim){
+\echo   blkvictims.push(victim.f1);
+\echo });
+\echo obj.victims.forEach(function(victim){
+\echo   victim.f2.forEach(function(blker){
+\echo     if (blkvictims.indexOf(blker) == -1 && blokers.indexOf(blker) == -1) blokers.push(blker);
+\echo   });
+\echo });
+\echo }
 \echo checkpars();
 \echo checktabs();
 \echo checkdbs();
+\echo checksess();
 \echo checkfindings();
 \echo });
 \echo window.onload = function() {
@@ -328,16 +353,25 @@ SELECT to_jsonb(r) FROM
 \echo   if ( obj.tabs.f1 > 10000) strfind += "<li> There are <b>" + obj.tabs.f1 + " tables</b> in the database. Only 10000 will be displayed in the report. Avoid too many tables in single database</li>";
 \echo   if (obj.arcfail) strfind += "<li>WAL archiving is suspected to be <b>failing</b>, please check PG logs</li>";
 \echo   if (obj.crash) strfind += "<li><b>Crash detected around "+ obj.crash +"</b>, please check PG logs</li>";
-\echo   let tempNScnt = obj.ns.filter(n => n.nsname.indexOf("pg_temp") > -1).length;
-\echo   strfind += "<li> There are <b>" + (obj.ns.length - tempNScnt).toString()  + " user schemas and " + tempNScnt + " temporary schema</b> in this database.</li>";
+\echo   if (obj.wmemuse !== null && obj.wmemuse.length > 0){ strfind += "<li> Biggest <code>maintenance_work_mem</code> consumers are :<b>"; obj.wmemuse.forEach(function(t,idx){ strfind += (idx+1)+". "+t.f1 + " (" + bytesToSize(t.f2) + ")    " }); strfind += "</b></li>"; }
+\echo   if (obj.victims !== null && obj.victims.length > 0) strfind += "<li>There are <b>" + obj.victims.length + " sessions blocked.</b></li>"
+\echo   if (obj.sumry !== null){ strfind += "<li>Data collection took <b>" + obj.sumry.f1 + " seconds. </b>";
+\echo      if ( obj.sumry.f1 < 23 ) strfind += "System response is good</li>";
+\echo      else if ( obj.sumry.f1 < 28 ) strfind += "System response is below average</li>";
+\echo      else strfind += "System response appears to be poor</li>";
+\echo      strfind += "<li>Current WAL generation rate is <b>" + bytesToSize(obj.sumry.f2) + " / hour</b></li>"; }
+\echo   if ( mgrver < Math.trunc(meta.pgvers[0])) strfind += "<li>PostgreSQL <b>Version : " + mgrver + " is outdated (EOL) and not supported</b>, Please upgrade urgently</li>";
+\echo   if ( mgrver >= 15 && ( walcomprz == "off" || walcomprz == "on")) strfind += "<li>The <b>wal_compression is '" + walcomprz + "' on PG"+ mgrver +"</b>, consider a good compression method (lz4,zstd)</li>"
+\echo   if (obj.ns !== null){
+\echo    let tempNScnt = obj.ns.filter(n => n.nsname.indexOf("pg_temp") > -1).length + obj.ns.filter(n => n.nsname.indexOf("pg_toast_temp") > -1).length ;
+\echo    strfind += "<li> There are <b>" + (obj.ns.length - tempNScnt).toString()  + " user schemas and " + tempNScnt + " temporary schema</b> in this database.</li>";
+\echo   }
 \echo   document.getElementById("finditem").innerHTML += strfind;
 \echo  }
-\echo   //Add footer to database details table at the top
 \echo   var el=document.createElement("tfoot");
 \echo   el.innerHTML = "<th colspan='9'>**Averages are Per Day. Total size of "+ (document.getElementById("dbs").tBodies[0].rows.length - 1) +" DBs : "+ bytesToSize(totdb) +"</th>";
 \echo   dbs=document.getElementById("dbs");
 \echo   dbs.appendChild(el);
-\echo   //Add footer to Sessions Summary table
 \echo   el=document.createElement("tfoot");
 \echo   el.innerHTML = "<th colspan='3'>Active: "+ obj.sess.f1 +", Idle-in-transaction: " + obj.sess.f2 + ", Idle: " + obj.sess.f3 + ", Background: " + obj.sess.f4 + ", Workers: " + obj.sess.f5 + ", Total: " + obj.sess.f6 + "</th>";
 \echo   tblss=document.getElementById("tblss");
@@ -384,18 +418,14 @@ SELECT to_jsonb(r) FROM
 \echo         autovacuum_freeze_max_age = Number(val.innerText);
 \echo         if (autovacuum_freeze_max_age > 800000000) val.classList.add("warn");
 \echo         break;
+\echo       case "checkpoint_timeout":
+\echo         if(val.innerText < 1200) { val.classList.add("warn"); val.title="Too small gap between checkpoints"}
+\echo         break;
 \echo       case "deadlock_timeout":
 \echo         val.classList.add("lime");
 \echo         break;
 \echo       case "effective_cache_size":
 \echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*8192,1024);
-\echo         break;
-\echo       case "maintenance_work_mem":
-\echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024);
-\echo         break;
-\echo       case "work_mem":
-\echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024);
-\echo         if(val.innerText > 98304) val.classList.add("warn");
 \echo         break;
 \echo       case "huge_pages":
 \echo         val.classList.add("lime");
@@ -403,11 +433,14 @@ SELECT to_jsonb(r) FROM
 \echo       case "huge_page_size":
 \echo         val.classList.add("lime");
 \echo         break;
-\echo       case "checkpoint_timeout":
-\echo         if(val.innerText < 1200) { val.classList.add("warn"); val.title="Too small gap between checkpoints"}
-\echo         break;
 \echo       case "hot_standby_feedback":
 \echo         val.classList.add("lime");
+\echo         break;
+\echo       case "jit":
+\echo         if (val.innerText=="on") { val.classList.add("warn"); val.title="JIT is reportedly causing high memory usage and even crashes in few cases. consider disabling it unless needed" }
+\echo         break;
+\echo       case "maintenance_work_mem":
+\echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024);
 \echo         break;
 \echo       case "shared_buffers":
 \echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*8192,1024);
@@ -429,14 +462,28 @@ SELECT to_jsonb(r) FROM
 \echo       case "random_page_cost":
 \echo         if(val.innerText > 1.2) val.classList.add("warn");
 \echo         break;
-\echo       case "jit":
-\echo         if (val.innerText=="on") { val.classList.add("warn"); val.title="JIT is reportedly causing high memory usage and even crashes in few cases. consider disabling it unless needed" }
-\echo         break;
 \echo       case "server_version":
-\echo         val.classList.add("lime");
+\echo         val.classList.add("lime"); let setval = val.innerText.split(" ")[0]; mgrver=setval.split(".")[0];
+\echo         if ( mgrver < Math.trunc(meta.pgvers[0])){
+\echo           val.classList.add("warn"); val.title="PostgreSQL Version is outdated (EOL) and not supported";
+\echo         } else {
+\echo           meta.pgvers.forEach(function(t){
+\echo             if (Math.trunc(setval) == Math.trunc(t)){
+\echo                if (t.split(".")[1] - setval.split(".")[1] > 0 ) { val.classList.add("warn"); val.title= t.split(".")[1] - setval.split(".")[1] + " minor version updates pending. Urgent!"; }
+\echo             }
+\echo           })  
+\echo         }
 \echo         break;
 \echo       case "synchronous_standby_names":
 \echo         if (val.innerText.trim().length > 0){ val.classList.add("warn"); val.title="Synchronous Standby can cause session hangs, and poor performance"; }
+\echo         break;
+\echo       case "wal_compression":
+\echo         val.classList.add("lime");
+\echo         walcomprz = val.innerText;
+\echo         break;
+\echo       case "work_mem":
+\echo         val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024);
+\echo         if(val.innerText > 98304) val.classList.add("warn");
 \echo         break;
 \echo     }
 \echo   }
@@ -450,23 +497,18 @@ SELECT to_jsonb(r) FROM
 \echo   const startTime =new Date().getTime();
 \echo   const trs=document.getElementById("tabInfo").rows
 \echo   const len=trs.length;
+\echo   trs[0].cells[2].title="Namespace / Schema oid";trs[0].cells[3].title="Bloat in Percentage";
 \echo   [10,16,17].forEach(function(num){trs[0].cells[num].title="autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US")})
 \echo   for(var i=1;i<len;i++){
-\echo   //TODO : trs.forEach (convert the for loop to forEach if possible)
 \echo     tr=trs[i]; let TotTab=tr.cells[8]; TotTabSize=Number(TotTab.innerHTML); TabInd=tr.cells[9]; TabIndSize=(TabInd.innerHTML);
 \echo     if(TotTabSize > 5000000000 ) { TotTab.classList.add("lime"); TotTab.title = bytesToSize(TotTabSize) + "\nBig Table, Consider Partitioning, Archive+Purge"; 
 \echo     } else TotTab.title=bytesToSize(TotTabSize);
-\echo     //Tab above 20MB and with Index bigger than Tab
 \echo     if( TabIndSize > 2*TotTabSize && TotTabSize > 2000000 ){ TabInd.classList.add("warn"); TabInd.title="Indexes of : " + bytesToSize(TabIndSize-TotTabSize) + " is " + ((TabIndSize-TotTabSize)/TotTabSize).toFixed(2) + "x of Table " + bytesToSize(TotTabSize) + "\n Total : " + bytesToSize(TabIndSize)
 \echo     } else TabInd.title=bytesToSize(TabIndSize); 
-\echo     //Tab+Ind > 10GB
 \echo     if (TabIndSize > 10000000000) TabInd.classList.add("lime");
-\echo     //Check vacuum frequncy
 \echo     if (tr.cells[13].innerText / obj.dbts.f4 > 12) tr.cells[13].classList.add("warn");  tr.cells[13].title="Too frequent vacuum runs : " + Math.round(tr.cells[13].innerText / obj.dbts.f4) + "/day";
-\echo     //Check the TOAST size
 \echo     if (tr.cells[15].innerText > 10000) { 
 \echo       tr.cells[15].title=bytesToSize(Number(tr.cells[15].innerText)); 
-\echo       //if TOAST is more than 10GB
 \echo       if (tr.cells[15].innerText > 10737418240) tr.cells[15].classList.add("warn")
 \echo       else tr.cells[15].classList.add("lime")
 \echo     }
@@ -478,7 +520,6 @@ SELECT to_jsonb(r) FROM
 \echo console.log("time taken for checktabs :" + (endTime - startTime));
 \echo }
 \echo function checkdbs(){
-\echo   //second column in the table is hidden, be careful
 \echo   const trs=document.getElementById("dbs").rows
 \echo   const len=trs.length;
 \echo   trs[0].cells[6].title="Average Temp generation Per Day"; trs[0].cells[7].title="Average Temp generation Per Day"; trs[0].cells[9].title="autovacuum_freeze_max_age=" + autovacuum_freeze_max_age.toLocaleString("en-US");
@@ -527,6 +568,7 @@ SELECT to_jsonb(r) FROM
 \echo   if (o.f2 > 0) str += "<br/>FILLFACTOR recommendation :" + Math.round(100 - 20*o.f2/(o.f2+o.f1)+ 20*o.f2*o.f4/((o.f2+o.f1)*o.f2));
 \echo   if (vac/obj.dbts.f4 > 50) { 
 \echo     let threshold = Math.round((Math.round(o.f2/obj.dbts.f4) + Math.round(o.f3/obj.dbts.f4))/48);
+\echo     if (threshold < 500) threshold = 500;
 \echo     str += "<br/>AUTOVACUUM recommendation : autovacuum_vacuum_threshold = "+ threshold +", autovacuum_analyze_threshold = " + threshold
 \echo   }
 \echo   return "<b>" + th.cells[0].innerText + "</b><br/>Schema : " + ns.nsname + str;
@@ -543,6 +585,9 @@ SELECT to_jsonb(r) FROM
 \echo })));
 \echo document.querySelectorAll(".thidden tr td:first-child").forEach(td => td.addEventListener("mouseout", (() => {
 \echo   td.parentNode.cells[2].innerHTML=td.parentNode.cells[2].firstChild.textContent;
+\echo })));
+\echo document.querySelectorAll("#tblsess tr td:nth-child(3)").forEach(td => td.addEventListener("click", (() => {
+\echo   console.log(td.title);
 \echo })));
 \echo trs=document.getElementById("IndInfo").rows;
 \echo for (let tr of trs) {
@@ -561,29 +606,20 @@ SELECT to_jsonb(r) FROM
 \echo   document.getElementById("tableConten").remove();
 \echo   document.getElementById("time").innerText="Database wait events are not found"  
 \echo }
-\echo let blokers = []
-\echo let blkvictims = []
-\echo trs=document.getElementById("tblblk").rows;
-\echo for (let tr of trs) {
-\echo   victim=tr.cells[0].innerText;
-\echo   blkr=tr.cells[9].innerText;
-\echo   if (victim > 0) blkvictims.push(victim);
-\echo   if (blkr > 0) blokers.push(blkr);
-\echo }
+\echo function checksess(){
 \echo trs=document.getElementById("tblsess").rows;
 \echo for (let tr of trs){
 \echo  pid=tr.cells[0];
 \echo  xidage=tr.cells[5];
 \echo  stime=tr.cells[7];
 \echo  if(xidage.innerText > 20) xidage.classList.add("warn");
-\echo  //if pid exists in blockers list
-\echo  if (blokers.indexOf(pid.innerText) > -1){ 
-\echo      pid.classList.add("warn"); pid.title="Blocker";
-\echo      //In case the pid is not there in vicitms list, it is the first blocker
-\echo      if (blkvictims.indexOf(pid.innerText) == -1) pid.classList.add("high");
-\echo   };
-\echo   if(DurationtoSeconds(stime.innerText) > 300) stime.classList.add("warn");
+\echo  if (blokers.indexOf(Number(pid.innerText)) > -1){ pid.classList.add("high"); pid.title="Blocker"; };
+\echo  if (blkvictims.indexOf(Number(pid.innerText)) > -1) { pid.classList.add("warn"); pid.title="Victim of blocker : " + obj.victims.find(el => el.f1 == pid.innerText).f2.toString(); };
+\echo  if(DurationtoSeconds(stime.innerText) > 300) stime.classList.add("warn");
+\echo  if (tr.cells[2].innerText.length > 100 ){ tr.cells[2].title = tr.cells[2].innerText; 
+\echo   tr.cells[2].innerText = tr.cells[2].innerText.substring(0, 100); 
 \echo }
+\echo }}
 \echo if(document.getElementById("tblblk").rows.length < 2){ 
 \echo   document.getElementById("tblblk").remove();
 \echo   document.getElementById("blocking").innerText="No Blocking Sessions Found";
@@ -634,7 +670,6 @@ SELECT to_jsonb(r) FROM
 \echo }
 \echo document.onkeyup = function(e) {
 \echo   if (e.altKey && e.which === 73) document.getElementById("topics").scrollIntoView({behavior: "smooth"});
-\echo   //       e.preventDefault();
 \echo }
 \echo </script>
 \echo </html>

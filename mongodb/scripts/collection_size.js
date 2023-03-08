@@ -1,3 +1,7 @@
+//
+// Know issue: It does not work for databases with hundreds of collections. It does not fit in the mdb[].stats array
+//
+// This function will calculate all the collection size
 // This function will calculate all the collection size
 //
 // First output is the total uncompressed size in memory of all records in a collection. 

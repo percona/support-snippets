@@ -1,3 +1,5 @@
+// A script to identify the collections that are not sharded but chunks exists
+
 //The following script will interact with all databases(ignoring admin and config) and their collections.stats().
 //If it's true that the collection is not sharded, save the namespace into the array .
 //Then, using those namespaces, it will match from config.chunk if there is any chunk for that namespace:

@@ -123,8 +123,8 @@ WITH  tabs AS
 FROM pg_get_rel r
 JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p') AND r.n_tup_upd > 0
 JOIN pg_get_ns ns ON r.relnamespace = ns.nsoid)
-SELECT 'ALTER TABLE '||nsname||'.'||relname||' SET ( FILLFACTOR='|| 100 - 20*n_tup_upd/(n_tup_ins+n_tup_upd) + 20*n_tup_upd*n_tup_hot_upd/((n_tup_ins+n_tup_upd)*n_tup_upd) || ' );',
---(20*n_tup_upd/(n_tup_ins+n_tup_upd) - 20*n_tup_upd*n_tup_hot_upd/((n_tup_ins+n_tup_upd)*n_tup_upd))
+SELECT 'ALTER TABLE '||nsname||'.'||relname||' SET ( FILLFACTOR='|| 100 - 20*n_tup_upd/(n_tup_ins+n_tup_upd) + 20*n_tup_upd*n_tup_hot_upd/((n_tup_ins+n_tup_upd)*n_tup_upd) || ' );'
+--, (20*n_tup_upd/(n_tup_ins+n_tup_upd) - 20*n_tup_upd*n_tup_hot_upd/((n_tup_ins+n_tup_upd)*n_tup_upd))
 FROM tabs
 WHERE (20*n_tup_upd/(n_tup_ins+n_tup_upd) - 20*n_tup_upd*n_tup_hot_upd/((n_tup_ins+n_tup_upd)*n_tup_upd)) > 1 ;
 
@@ -142,6 +142,9 @@ WITH curdb AS (SELECT trim(both '\"' from substring(connstr from '\"\w*\"')) "cu
 SELECT 'ALTER TABLE '||nsname||'.'||relname||' SET ( autovacuum_vacuum_threshold='|| GREATEST(ROUND((n_tup_upd/curstatus.days + n_tup_del/curstatus.days)/48),500) ||', autovacuum_analyze_threshold='|| GREATEST(ROUND((n_tup_upd/curstatus.days + n_tup_del/curstatus.days)/48),500) || ' );'
 FROM tabs JOIN curstatus ON TRUE
 WHERE tabs.vac_nos/curstatus.days > 48;
+
+--18. Oldest transactions which are still not completed
+select pid,backend_xid::text::int from pg_get_activity order by 2;
 
 
 =======================HISTORY SCHEMA ANALYSIS=========================

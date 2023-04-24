@@ -12,7 +12,7 @@ DROP TABLE IF EXISTS pg_get_index;
 DROP TABLE IF EXISTS pg_get_rel;
 DROP TABLE IF EXISTS pg_get_inherits;
 DROP TABLE IF EXISTS pg_srvr;
-DROP TABLE IF EXISTS pg_get_block;
+DROP TABLE IF EXISTS pg_get_block;  --Deprecated in v20
 DROP TABLE IF EXISTS pg_get_pidblock;
 DROP TABLE IF EXISTS pg_pid_wait;
 DROP TABLE IF EXISTS pg_replication_stat;
@@ -151,12 +151,13 @@ CREATE UNLOGGED TABLE pg_get_file_confs (
     error text
 );
 
---TODO : Add relpersistence to the table for identifying the temporary tables
 CREATE UNLOGGED TABLE pg_get_class (
     reloid oid,
     relname text,
     relkind char(1),
-    relnamespace oid
+    relnamespace oid,
+    relpersistence char,
+    reloptions text[]
 );
 
 CREATE UNLOGGED TABLE pg_get_inherits(

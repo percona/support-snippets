@@ -1,0 +1,29 @@
+db.getSiblingDB('<database-name>').<collection-name>.aggregate([
+  { $sample: { size: 20000 } },
+  {
+      "$facet":{
+         "dist_count":[
+            {
+               "$group":{
+                  "_id":"$<field-name>"
+               }
+            }
+         ],
+         "count":[
+            {
+               "$count":"count"
+            }
+         ]
+      }
+   },
+   {
+      "$addFields":{
+         "dist_count":{
+            "$size":"$dist_count"
+         },
+         "count":{
+            "$first":"$count.count"
+         }
+      }
+   }
+]);

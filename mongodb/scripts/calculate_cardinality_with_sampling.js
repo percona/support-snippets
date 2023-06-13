@@ -1,4 +1,4 @@
-db.getSiblingDB('<database-name>').<collection-name>.aggregate([
+db.getSiblingDB('<database-name>').getCollection('<collection-name>').aggregate([
   { $sample: { size: 20000 } },
   {
       "$facet":{

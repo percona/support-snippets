@@ -1,4 +1,4 @@
-db.getSiblingDB('<database-name>').<collection-name>.aggregate([
+db.getSiblingDB('<database-name>').getCollection('<collection-name>').aggregate([
    {
       "$facet":{
          "dist_count":[

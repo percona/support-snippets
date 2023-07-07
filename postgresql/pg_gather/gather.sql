@@ -1,7 +1,7 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 -- pg_gather version
-\set ver 20
+\set ver 21
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( current_database() != 'template1' ) as fullgather \gset
@@ -120,8 +120,8 @@ COPY (SELECT oid,relname,relkind,relnamespace,relpersistence,reloptions FROM pg_
 \echo '\\.'
 
 --Index usage info
-\echo COPY pg_get_index(indexrelid,indrelid,indisunique,indisprimary,numscans,size) FROM stdin;
-COPY (SELECT indexrelid,indrelid,indisunique,indisprimary, pg_stat_get_numscans(indexrelid),pg_table_size(indexrelid) from pg_index) TO stdin;
+\echo COPY pg_get_index(indexrelid,indrelid,indisunique,indisprimary,indisvalid,numscans,size) FROM stdin;
+COPY (SELECT indexrelid,indrelid,indisunique,indisprimary,indisvalid, pg_stat_get_numscans(indexrelid),pg_table_size(indexrelid) from pg_index) TO stdin;
 \echo '\\.'
 
 --Table usage Information 
@@ -160,6 +160,11 @@ JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_
 --TOAST info
 \echo COPY pg_get_toast FROM stdin;
 COPY (SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
+\echo '\\.'
+
+--Partitioning
+\echo COPY pg_get_inherits (inhrelid,inhparent) FROM stdin;
+COPY (SELECT inhrelid,inhparent FROM pg_inherits) TO stdin;
 \echo '\\.'
 
 --namespaces/schemas

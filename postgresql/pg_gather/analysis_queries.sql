@@ -19,12 +19,17 @@ FROM pg_get_activity
 GROUP BY ROLLUP(1,2)
 ORDER BY 1,2;
 
---2.1 Details of a particular session
-SELECT a.*, rolname "user",datname "database"
+--2.1 Details of a sessions
+SELECT pid, rolname "user",datname "database",application_name,client_addr,backend_type,state_change
 FROM pg_get_activity a 
   join pg_get_roles on a.usesysid=pg_get_roles.oid
   join pg_get_db on a.datid = pg_get_db.datid
-WHERE PID=7494;
+WHERE true 
+--Add custom filters and comment out what is not required
+--AND PID=7494
+AND backend_type = 'client backend' 
+AND application_name NOT LIKE ALL (ARRAY['PostgreSQL JDBC Driver%','DBeaver%','pgAdmin%'])
+AND rolname = 'pmmmaint'
 
 --3.Which session is at the top of the blocking
 SELECT blocking_pid,statement_in_blocking_process,count(*)
@@ -145,6 +150,14 @@ WHERE tabs.vac_nos/curstatus.days > 48;
 
 --18. Oldest transactions which are still not completed
 select pid,backend_xid::text::int from pg_get_activity order by 2;
+
+--19. Partitioned tables and Indexes
+SELECT c.relkind,p.relname, c.relname
+FROM pg_get_inherits i
+LEFT JOIN pg_get_class p ON i.inhparent = p.reloid
+LEFT JOIN pg_get_class c ON i.inhrelid = c.reloid
+ORDER BY 1,2;
+
 
 
 =======================HISTORY SCHEMA ANALYSIS=========================

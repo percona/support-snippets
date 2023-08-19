@@ -1,7 +1,7 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 -- pg_gather version
-\set ver 21
+\set ver 22
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( current_database() != 'template1' ) as fullgather \gset
@@ -25,6 +25,7 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 \set QUIET on
 SET statement_timeout=60000;
 \t on
+\x off
 PREPARE pidevents AS
 SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
 \a
@@ -39,8 +40,8 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLI
 \echo '\\.'
 \endif
 
-\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,current_wal) FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),
+\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline, current_wal) FROM stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline,
 CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
 ) TO stdin; 
 \echo '\\.'
@@ -100,18 +101,23 @@ FROM pg_database d) TO stdin;
 
 \if :fullgather
 --Users / Roles
-\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,rolconfig) FROM stdin;
-COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,rolconfig from pg_roles WHERE rolcanlogin) TO stdout;
+\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit) FROM stdin;
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit from pg_roles WHERE rolcanlogin) TO stdout;
 \echo '\\.'
 
 --pg_settings
 \echo COPY pg_get_confs (name,setting,unit,source) FROM stdin;
-COPY ( SELECT name,setting,unit,sourcefile FROM pg_settings) TO stdin;
+COPY ( SELECT name,setting,unit,coalesce(sourcefile,source) FROM pg_settings) TO stdin;
 \echo '\\.'
 
 --pg_file_settings
 \echo COPY pg_get_file_confs (sourcefile,name,setting,applied,error) FROM stdin;
 COPY ( SELECT sourcefile,name,setting,applied,error FROM pg_file_settings) TO stdin;
+\echo '\\.'
+
+--pg_db_role_setting
+\echo COPY pg_get_db_role_confs (db,setrole,config) FROM stdin;
+COPY ( SELECT setdatabase,setrole,setconfig FROM pg_db_role_setting) TO stdin;
 \echo '\\.'
 
 --Major tables and indexes in current schema
@@ -177,6 +183,7 @@ COPY (SELECT oid,nspname FROM pg_namespace) TO stdout;
 COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg_extension) TO stdout;
 \echo '\\.'
 
+--End fullgather before pg_get_roles (line: 102)
 \endif
 
 --Lock chain info
@@ -201,6 +208,14 @@ COPY (
 select archived_count,last_archived_wal,last_archived_time,last_failed_wal,last_failed_time from pg_stat_archiver
 ) TO stdin;
 \echo '\\.'
+
+
+--WAL stats
+\if :pg14
+\echo COPY pg_get_wal(wal_records,wal_fpi,wal_bytes,wal_buffers_full,wal_write,wal_sync,wal_write_time,wal_sync_time,stats_reset) FROM stdin;
+COPY (SELECT wal_records,wal_fpi,wal_bytes,wal_buffers_full,wal_write,wal_sync,wal_write_time,wal_sync_time,stats_reset FROM pg_stat_wal) TO stdout;
+\echo '\\.'
+\endif
 
 --bgwriter
 \echo COPY pg_get_bgwriter FROM stdin;

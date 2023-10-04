@@ -13,11 +13,11 @@
 \echo .high { border: 5px solid red;font-weight:bold}
 \echo .lime { font-weight:bold;background-color: #FFD}
 \echo .lineblk {float: left; margin:0 9px 4px 0 }
-\echo .bottomright { position: fixed; right: 0px; bottom: 0px; padding: 5px; border : 2px solid #AFAFFF; border-radius: 5px;}
 \echo .thidden tr td:nth-child(2), .thidden th:nth-child(2) {display: none;}
 \echo .thidden tr td:first-child {color:blue;}
+\echo #bottommenu { position: fixed; right: 0px; bottom: 0px; padding: 5px; border : 2px solid #AFAFFF; border-radius: 5px;}
 \echo #cur { font: 5em arial; position: absolute; color:brown; animation: vanish 0.8s ease forwards; }  /*sort indicator*/
-\echo #dtls,#finditem {position: absolute;background-color:#FAFFEA;border: 2px solid blue; border-radius: 5px; padding: 1em; box-shadow: 2px 2px grey;}
+\echo #dtls,#finditem,#menu {position: absolute;background-color:#FAFFEA;border: 2px solid blue; border-radius: 5px; padding: 1em; box-shadow: 2px 2px grey;}
 \echo @keyframes vanish { from { opacity: 1;} to {opacity: 0;} }
 \echo summary {  padding: 1rem; font: bold 1.2em arial;  cursor: pointer } 
 \echo footer { text-align: center; padding: 3px; background-color:#d2f2ff}
@@ -49,7 +49,7 @@ SELECT * FROM
   END AS val)
 SELECT  UNNEST(ARRAY ['Collected At','Collected By','PG build', 'PG Start','In recovery?','Client','Server','Last Reload','Current LSN','Time Line','WAL file']) AS pg_gather,
         UNNEST(ARRAY [CONCAT(collect_ts::text,' (',TZ.val,')'),usr,ver, pg_start_ts::text ||' ('|| collect_ts-pg_start_ts || ')',recovery::text,client::text,server::text,reload_ts::text,
-        current_wal::text,timeline::text || ' (Hex:' || to_hex(timeline)::text || ')',  lpad(to_hex(timeline)::text,8,'0')||substring(pg_walfile_name(current_wal) from 9 for 16)]) AS "Report"
+        current_wal::text,timeline::text || ' (Hex:' ||  upper(to_hex(timeline)) || ')',  lpad(upper(to_hex(timeline)),8,'0')||substring(pg_walfile_name(current_wal) from 9 for 16)]) AS "Report"
 FROM pg_gather LEFT JOIN TZ ON TRUE 
 UNION
 SELECT  'Connection', replace(connstr,'You are connected to ','') FROM pg_srvr ) a WHERE "Report" IS NOT NULL ORDER BY 1;
@@ -90,8 +90,23 @@ LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-COALESCE(pg_get_db.s
 \echo <li><a href="#bgcp" >BGWriter & Checkpointer</a></li>
 \echo <li><a href="#findings">Findings</a></li>
 \echo </ol>
-\echo <div class="bottomright">
-\echo   <a href="#topics">Sections (Alt+I)</a>
+\echo <div id="bottommenu">
+\echo  <a href="#topics" title="Sections">☰ Section Index (Alt+I)</a>
+\echo  <div id="menu" style="display:none; position: relative">
+\echo   <ol>
+\echo     <li><a href="#tables">Tables</a></li>
+\echo     <li><a href="#indexes">Indexes</a></li>
+\echo     <li><a href="#parameters">Parameters / Settings</a></li>
+\echo     <li><a href="#extensions">Extensions</a></li>
+\echo     <li><a href="#activiy">Connection Summary</a></li>
+\echo     <li><a href="#time">Database Time</a></li>
+\echo     <li><a href="#sess">Session Details</a></li>
+\echo     <li><a href="#statements" title="pg_get_statements">Top 10 Statements</a></li>
+\echo     <li><a href="#replstat">Replications</a></li>
+\echo     <li><a href="#bgcp" >BGWriter & Checkpointer</a></li>
+\echo     <li><a href="#findings">Findings</a></li>
+\echo   </ol>
+\echo  </div>
 \echo </div>
 \echo <div id="sections" style="display:none">
 \echo <h2 id="tables">Tables</h2>
@@ -100,7 +115,7 @@ LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts-COALESCE(pg_get_db.s
 \pset footer on
 \pset tableattr 'id="tabInfo" class="thidden"'
 SELECT c.relname || CASE WHEN c.relkind != 'r' THEN ' ('||c.relkind||')' ELSE '' END "Name" ,
-to_jsonb(ROW(r.n_tup_ins,r.n_tup_upd,r.n_tup_del,r.n_tup_hot_upd)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks ELSE NULL END "Bloat%",
+to_jsonb(ROW(r.n_tup_ins,r.n_tup_upd,r.n_tup_del,r.n_tup_hot_upd,isum.totind,isum.ind0scan)),r.relnamespace "NS", CASE WHEN r.blks > 999 AND r.blks > tb.est_pages THEN (r.blks-tb.est_pages)*100/r.blks ELSE NULL END "Bloat%",
 r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
 r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",r.vac_nos,
 ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
@@ -110,9 +125,8 @@ LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
 LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
 LEFT JOIN pg_tab_bloat tb ON r.relid = tb.table_oid
-LEFT JOIN pg_get_ns ns ON r.relnamespace = ns.nsoid
+LEFT JOIN (SELECT count(indexrelid) totind,count(indexrelid)FILTER( WHERE numscans=0 ) ind0scan,indrelid FROM pg_get_index GROUP BY indrelid ) AS isum ON isum.indrelid = r.relid
 ORDER BY r.tab_ind_size DESC LIMIT 10000; 
-\pset tableattr
 \echo <h2 id="indexes">Indexes</h2>
 \pset tableattr 'id="IndInfo"'
 SELECT ct.relname AS "Table", ci.relname as "Index",indisunique as "UK?",indisprimary as "PK?",numscans as "Scans",size
@@ -123,10 +137,24 @@ ORDER BY size DESC LIMIT 10000;
 \pset tableattr 
 \echo <h2 id="parameters">Parameters & settings</h2>
 \pset tableattr 'id="params"'
-SELECT coalesce(s.name,f.name) "Name",s.setting,s.unit,s.source, 
-string_agg(f.sourcefile ||' - '|| f.setting || CASE WHEN f.applied = true THEN ' (applicable)' ELSE '' END ,chr(10)) FILTER (WHERE s.source != f.sourcefile OR s.source IS NULL ) AS "Other locations"
+WITH dset AS (
+SELECT string_agg(setting,chr(10)) setting,a.name FROM
+(SELECT btrim(CASE WHEN rolname IS NULL THEN '' ELSE 'User: '|| rolname ||' , ' END || CASE WHEN datname IS NULL THEN '' ELSE 'DB: '|| datname END ,' ,') || ' ==> ' ||setting AS setting
+,split_part(setting,'=',1) AS name
+FROM pg_get_db_role_confs drc
+LEFT JOIN LATERAL unnest(config) AS setting ON TRUE
+LEFT JOIN pg_get_db db ON drc.db = db.datid
+LEFT JOIN pg_get_roles rol ON rol.oid = drc.setrole
+ORDER BY 1,2 NULLS LAST
+) AS a GROUP BY 2 ),
+fset AS (SELECT coalesce(s.name,f.name) AS name
+,s.setting,s.unit,s.source
+,string_agg(f.sourcefile ||' - '|| f.setting || CASE WHEN f.applied = true THEN ' (applicable)' ELSE '' END ,chr(10)) FILTER (WHERE s.source != f.sourcefile OR s.source IS NULL ) AS loc
 FROM pg_get_confs s FULL OUTER JOIN pg_get_file_confs f ON lower(s.name) = lower(f.name)
-GROUP BY 1,2,3,4 ORDER BY 1; 
+GROUP BY 1,2,3,4 ORDER BY 1)
+SELECT fset.name "Name",fset.setting "Setting",fset.unit "Unit",fset.source "Source",
+CASE WHEN dset.setting IS NULL THEN '' ELSE dset.setting ||chr(10) END || CASE WHEN fset.loc IS NULL THEN '' ELSE fset.loc END AS "Other Locations"
+FROM fset LEFT JOIN dset ON fset.name = dset.name; 
 \pset tableattr
 \echo <h2 id="extensions">Extensions</h2>
 \pset tableattr 'id="tblextn"'
@@ -231,11 +259,11 @@ FROM W;
 WITH W AS (select last_failed_time,last_archived_time,last_archived_wal from pg_archiver_stat where last_archived_time < last_failed_time)
 SELECT CASE WHEN last_archived_time IS NOT NULL
   THEN '<li>WAL archiving is failing since <b>'||last_archived_time||' (duration:'|| (SELECT COALESCE(collect_ts,(SELECT max(state_change) FROM pg_get_activity)) AS c_ts FROM pg_gather) - last_archived_time  ||') onwards</b> '  ||
-  COALESCE(
+  CASE WHEN length(last_archived_wal)=24 THEN COALESCE(
   (SELECT ' With estimated size <b>' ||
   pg_size_pretty(((('x'||lpad(split_part(current_wal::TEXT,'/', 1),8,'0'))::bit(32)::bigint - ('x'||substring(last_archived_wal,9,8))::bit(32)::bigint) * 255 * 16^6 + 
   ('x'||lpad(split_part(current_wal::TEXT,'/', 2),8,'0'))::bit(32)::bigint - ('x'||substring(last_archived_wal,17,8))::bit(32)::bigint*16^6 )::bigint)
-  FROM pg_gather), ' ') || '</b> behind </li>'
+  FROM pg_gather), ' ') || '</b> behind </li>' ELSE '</li>' END
 ELSE NULL END
 FROM W;
 WITH W AS (select count(*) AS val from pg_get_index i join pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't')
@@ -290,9 +318,10 @@ SELECT to_jsonb(r) FROM
     LEFT JOIN LATERAL (SELECT GREATEST((EXTRACT(epoch FROM(c_ts- COALESCE(pg_get_db.stats_reset,pg_get_wal.stats_reset)))/86400)::bigint,1) as days FROM cts) AS lat1 ON TRUE
     LEFT JOIN cts ON true ) as dbts,
   (SELECT json_agg(pg_get_ns) FROM  pg_get_ns WHERE nsoid > 16384 OR nsname='public') AS ns,
-  (SELECT to_jsonb(ROW((collect_ts-last_archived_time) > '15 minute' :: interval, 
-  pg_wal_lsn_diff(current_wal,(coalesce(nullif(ltrim(substring(last_archived_wal,9,8),'0'),''),'0') ||'/'|| substring(last_archived_wal,23,2) || '000001')::pg_lsn))) FROM pg_gather,pg_archiver_stat) AS arcfail,
-  (SELECT to_jsonb(setting) FROM pg_get_confs WHERE name = 'archive_library') AS arclib,
+  (SELECT to_jsonb( ROW((collect_ts - last_archived_time) > '15 minute' :: interval, pg_wal_lsn_diff( current_wal,
+  (coalesce(nullif(CASE WHEN length(last_archived_wal) < 24 THEN '' ELSE ltrim(substring(last_archived_wal, 9, 8), '0') END, ''), '0') || '/' || substring(last_archived_wal, 23, 2) || '000001'        ) :: pg_lsn )))
+  FROM  pg_gather,  pg_archiver_stat) AS arcfail,
+  (SELECT to_jsonb(ROW(max(setting) FILTER (WHERE name = 'archive_library'), max(setting) FILTER (WHERE name = 'cluster_name'),count(*) FILTER (WHERE source = 'command line'))) FROM pg_get_confs) AS params,
   (SELECT CASE WHEN max(stats_reset)-min(stats_reset) < '2 minute' :: interval THEN min(stats_reset) ELSE NULL END 
   FROM (SELECT stats_reset FROM pg_get_db UNION SELECT stats_reset FROM pg_get_bgwriter) reset) crash,
   (WITH blockers AS (select array_agg(victim_pid) OVER () victim,blocking_pids blocker from pg_get_pidblock),
@@ -305,7 +334,7 @@ SELECT to_jsonb(r) FROM
   (SELECT json_agg((relname,maint_work_mem_gb)) FROM (SELECT relname,n_live_tup*0.2*6 maint_work_mem_gb 
    FROM pg_get_rel JOIN pg_get_class ON n_live_tup > 894784853 AND pg_get_rel.relid = pg_get_class.reloid 
    ORDER BY 2 DESC LIMIT 3) AS wmemuse) wmemuse,
-   (SELECT to_jsonb(count(*)) FROM pg_get_index WHERE indisvalid=false) indinvalid
+   (SELECT to_jsonb(ROW(count(*) FILTER (WHERE indisvalid=false),count(*) FILTER (WHERE numscans=0),count(*),sum(size) FILTER (WHERE numscans=0))) FROM pg_get_index) induse
 ) r;
 
 \echo </div>
@@ -313,16 +342,18 @@ SELECT to_jsonb(r) FROM
 \echo <footer>End of <a href="https://github.com/jobinau/pg_gather">pgGather</a> Report</footer>
 \echo <script type="text/javascript">
 \echo obj={};
-\echo ver="22";
-\echo meta={pgvers:["11.21","12.16","13.12","14.9","15.4"],commonExtn:["plpgsql","pg_stat_statements"],riskyExtn:["citus","tds_fdw"]};
+\echo ver="23";
+\echo meta={pgvers:["11.21","12.16","13.12","14.9","15.4","16.0"],commonExtn:["plpgsql","pg_stat_statements"],riskyExtn:["citus","tds_fdw"]};
 \echo mgrver="";
 \echo walcomprz="";
 \echo autovacuum_freeze_max_age = 0;
+\echo let strfind = "";
 \echo totdb=0;
 \echo totCPU=0;
 \echo totMem=0;
 \echo let blokers = []
 \echo let blkvictims = []
+\echo let params = []
 \echo document.addEventListener("DOMContentLoaded", () => {
 \echo obj=JSON.parse( document.getElementById("analdata").innerText);
 \echo if (obj.victims !== null){
@@ -341,6 +372,7 @@ SELECT to_jsonb(r) FROM
 \echo checkdbs();
 \echo checkextn();
 \echo checksess();
+\echo checkchkpntbgwrtr();
 \echo checkfindings();
 \echo });
 \echo window.onload = function() {
@@ -368,7 +400,6 @@ SELECT to_jsonb(r) FROM
 \echo   }
 \echo }
 \echo function checkfindings(){
-\echo  let strfind = "";
 \echo  if (obj.sess.f7 < 4){ 
 \echo   strfind += "<li><b>The pg_gather data is collected by a user who don't have proper access / privilege</b> Please run the script as a privileged user (superuser, rds_superuser etc.) or some account with pg_monitor privilege.</li>"
 \echo   document.getElementById("tableConten").title="Waitevents data will be growsly incorrect because the pg_gather data is collected by a user who don't have proper access / privilege. Please refer the Findings section";
@@ -382,18 +413,21 @@ SELECT to_jsonb(r) FROM
 \echo     } 
 \echo     strfind += "</li>";
 \echo  }
-\echo  if (obj.indinvalid > 0 ) strfind += "<li><b>"+ obj.indinvalid +" Invalid Index(es)</b> found. Recreate or drop them</li>";
+\echo  if (obj.induse.f1 > 0 ) strfind += "<li><b>"+ obj.induse.f1 +" Invalid Index(es)</b> found. Recreate or drop them. Refer <a href='https://github.com/jobinau/pg_gather/blob/main/docs/InvalidIndexes.md'>Link</a></li>";
+\echo  if (obj.induse.f2 > 0 ) strfind += "<li><b>"+ obj.induse.f2 +" out of " + obj.induse.f3 + " Index(es) are Unused, Which accounts for "+ bytesToSize(obj.induse.f4) +"</b>. Consider dropping of all unused Indexes</li>";
 \echo  if (obj.ptabs > 0) strfind += "<li><b>"+ obj.ptabs +" Natively partitioned tables</b> found. Tables section could contain partitions</li>";
+\echo  if (obj.params.f3 > 10) strfind += "<li> Patroni/HA PG cluster :<b>" + obj.params.f2 + "</b></li>"
 \echo  if(obj.clsr){
 \echo   strfind += "<li>PostgreSQL is in Standby mode or in Recovery</li>";
 \echo  }else{
 \echo   if ( obj.tabs.f2 > 0 ) strfind += "<li> <b>No vacuum info for " + obj.tabs.f2 + "</b> tables </li>";
 \echo   if ( obj.tabs.f3 > 0 ) strfind += "<li> <b>No statistics available for " + obj.tabs.f3 + " tables</b>, query planning can go wrong </li>";
 \echo   if ( obj.tabs.f1 > 10000) strfind += "<li> There are <b>" + obj.tabs.f1 + " tables</b> in the database. Only the biggest 10000 will be displayed in the report. Avoid too many tables in single database. You may use backend query (Query No.10) from analysis_queries.sql</li>";
-\echo   if (obj.arcfail.f1 == null) strfind += "<li>No WAL archiving / Backup configured. No PITR possible</li>";
-\echo   if (obj.arcfail.f1) strfind += "<li>No WAL archiving happened in last 15 minutes <b>archiving could be failing</b>; please check PG logs</li>";
-\echo   if (obj.arcfail.f2 && obj.arcfail.f2 > 0) strfind += "<li>WAL archiving is <b>lagging by "+ bytesToSize(obj.arcfail.f2,1024)  +"</b></li>";
-\echo   if (obj.crash) strfind += "<li><b>Possible crash around "+ obj.crash +"</b>, please verify PG logs</li>";
+\echo   if (obj.arcfail != null) {
+\echo    if (obj.arcfail.f1 == null) strfind += "<li>No working WAL archiving and backup detected. PITR may not be possible</li>";
+\echo    if (obj.arcfail.f1) strfind += "<li>No WAL archiving happened in last 15 minutes <b>archiving could be failing</b>; please check PG logs</li>";
+\echo    if (obj.arcfail.f2 && obj.arcfail.f2 > 0) strfind += "<li>WAL archiving is <b>lagging by "+ bytesToSize(obj.arcfail.f2,1024)  +"</b></li>";
+\echo   }
 \echo   if (obj.wmemuse !== null && obj.wmemuse.length > 0){ strfind += "<li> Biggest <code>maintenance_work_mem</code> consumers are :<b>"; obj.wmemuse.forEach(function(t,idx){ strfind += (idx+1)+". "+t.f1 + " (" + bytesToSize(t.f2) + ")    " }); strfind += "</b></li>"; }
 \echo   if (obj.victims !== null && obj.victims.length > 0) strfind += "<li>There are <b>" + obj.victims.length + " sessions blocked.</b></li>"
 \echo   if (obj.sumry !== null){ strfind += "<li>Data collection took <b>" + obj.sumry.f1 + " seconds. </b>";
@@ -401,7 +435,7 @@ SELECT to_jsonb(r) FROM
 \echo      else if ( obj.sumry.f1 < 28 ) strfind += "System response is below average</li>";
 \echo      else strfind += "System response appears to be poor</li>";
 \echo      strfind += "<li>Current WAL generation rate is <b>" + bytesToSize(obj.sumry.f2) + " / hour</b></li>"; }
-\echo   if ( mgrver < Math.trunc(meta.pgvers[0])) strfind += "<li>PostgreSQL <b>Version : " + mgrver + " is outdated (EOL) and not supported</b>, Please upgrade urgently</li>";
+\echo   if ( mgrver.length > 0 &&  mgrver < Math.trunc(meta.pgvers[0])) strfind += "<li>PostgreSQL <b>Version : " + mgrver + " is outdated (EOL) and not supported</b>, Please upgrade urgently</li>";
 \echo   if ( mgrver >= 15 && ( walcomprz == "off" || walcomprz == "on")) strfind += "<li>The <b>wal_compression is '" + walcomprz + "' on PG"+ mgrver +"</b>, consider a good compression method (lz4,zstd)</li>"
 \echo   if (obj.ns !== null){
 \echo    let tempNScnt = obj.ns.filter(n => n.nsname.indexOf("pg_temp") > -1).length + obj.ns.filter(n => n.nsname.indexOf("pg_toast_temp") > -1).length ;
@@ -444,7 +478,7 @@ SELECT to_jsonb(r) FROM
 \echo   },
 \echo   archive_command : function(rowref) {
 \echo     val=rowref.cells[1];
-\echo     if (obj.arclib !== null && obj.arclib.length > 0) { val.classList.add("warn"); val.title="archive_command won't be in-effect, because archive_library : " + obj.arclib + " is specified"  }
+\echo     if (obj.params !== null && obj.params.f1 !== null && obj.params.f1.length > 0) { val.classList.add("warn"); val.title="archive_command won't be in-effect, because archive_library : " + obj.arclib + " is specified"  }
 \echo     else if (val.innerText.length < 5) {val.classList.add("warn"); val.title="A valid archive_command is expected for WAL archiving, unless archive library is used" ; }
 \echo   },
 \echo   autovacuum : function(rowref) {
@@ -488,6 +522,14 @@ SELECT to_jsonb(r) FROM
 \echo   huge_pages: function(rowref){ val=rowref.cells[1]; val.classList.add("lime"); },
 \echo   huge_page_size: function(rowref){ val=rowref.cells[1]; val.classList.add("lime"); },
 \echo   hot_standby_feedback: function(rowref){ val=rowref.cells[1]; val.classList.add("lime"); },
+\echo   idle_session_timeout:function(rowref){ 
+\echo     val=rowref.cells[1]; 
+\echo     if (val.innerText > 0) { val.classList.add("warn"); val.title="It is dangerous to use idle_session_timeout. Avoid using this" }
+\echo   },
+\echo   idle_in_transaction_session_timeout: function(rowref){ 
+\echo     val=rowref.cells[1]; 
+\echo     if (val.innerText == 0){ val.classList.add("warn"); val.title="Highly suggestable to use atleast 5min to prevent application misbehaviour" }
+\echo   },
 \echo   jit: function(rowref){ val=rowref.cells[1]; if (val.innerText=="on") { val.classList.add("warn"); 
 \echo     val.title="Avoid JIT globally (Disable), Use only at smaller scope" }},
 \echo   maintenance_work_mem: function(rowref){ val=rowref.cells[1]; val.classList.add("lime"); val.title=bytesToSize(val.innerText*1024,1024); },
@@ -527,14 +569,24 @@ SELECT to_jsonb(r) FROM
 \echo     if(val.innerText > 98304) val.classList.add("warn");
 \echo     else val.classList.add("lime");
 \echo   },
-\echo   default : function(rowref) { 
-\echo   }
+\echo   bgwriter_lru_maxpages: function(rowref){
+\echo     let param = params.find(p => p.param === "bgwriter_lru_maxpages");
+\echo     if (typeof param["suggest"] != "undefined"){
+\echo       val = val=rowref.cells[1];
+\echo       val.classList.add("warn"); 
+\echo       val.title="bgwriter_lru_maxpages is too low. Increase this to :" + param["suggest"];
+\echo     }
+\echo   },
+\echo   default : function(rowref) {} 
 \echo };
 \echo var evalParam = function(param,rowref = null) {
-\echo   if (rowref.id == "") rowref.id=param;  
+\echo   if (rowref != null && rowref.id == "") rowref.id=param;  
 \echo   else rowref = document.getElementById(param); 
-\echo   var param = paramDespatch.hasOwnProperty(param) ? param : "default"
-\echo   paramDespatch[param](rowref);
+\echo   if (paramDespatch.hasOwnProperty(param)){ 
+\echo     let paramJson = {}; paramJson["param"] = param; paramJson["val"] = rowref.cells[1].innerText;
+\echo     params.push(paramJson);
+\echo     paramDespatch[param](rowref);
+\echo    }
 \echo }
 \echo function checkpars(){
 \echo   trs=document.getElementById("params").rows
@@ -587,7 +639,7 @@ SELECT to_jsonb(r) FROM
 \echo     aged(tr.cells[9]);
 \echo   }
 \echo   if (aborts.length >0)
-\echo     document.getElementById("finditem").innerHTML += "<li>High number of transaction aborts/rollbacks in databases : <b>" + aborts.toString() + "</b>, please inspect PostgreSQL logs for more details</li>" ; 
+\echo   strfind += "<li>High number of transaction aborts/rollbacks in databases : <b>" + aborts.toString() + "</b>, please inspect PostgreSQL logs for more details</li>" ; 
 \echo }
 \echo function checkextn(){
 \echo   const trs=document.getElementById("tblextn").rows
@@ -626,8 +678,10 @@ SELECT to_jsonb(r) FROM
 \echo   let vac=th.cells[13].innerText;
 \echo   let ns=obj.ns.find(el => el.nsoid === JSON.parse(th.cells[2].innerText).toString());
 \echo   let str=""
+\echo   if (o.f5 !== null) str += "<br/>Total Indexes: " + o.f5;
+\echo   if (o.f5 !== null) str += "<br/>Unused Indexes: " + o.f6;
 \echo   if (obj.dbts.f4 < 1) obj.dbts.f4 = 1;
-\echo   if (vac > 0) str="<br />Vacuums / day : " + Number(vac/obj.dbts.f4).toFixed(1);
+\echo   if (vac > 0) str +="<br />Vacuums / day : " + Number(vac/obj.dbts.f4).toFixed(1);
 \echo   str += "<br/>Inserts / day : " + Math.round(o.f1/obj.dbts.f4);
 \echo   str += "<br/>Updates / day : " + Math.round(o.f2/obj.dbts.f4);
 \echo   str += "<br/>Deletes / day : " + Math.round(o.f3/obj.dbts.f4);
@@ -663,6 +717,9 @@ SELECT to_jsonb(r) FROM
 \echo document.querySelectorAll(".thidden tr td:first-child").forEach(td => td.addEventListener("mouseout", (() => {
 \echo   td.parentNode.cells[2].innerHTML=td.parentNode.cells[2].firstChild.textContent;
 \echo })));
+\echo let elem=document.getElementById("bottommenu")
+\echo elem.onmouseover = function() { document.getElementById("menu").style.display = "block"; }
+\echo elem.onclick = function() { document.getElementById("menu").style.display = "none"; }
 \echo document.querySelectorAll("#tblsess tr td:nth-child(6)").forEach(td => td.addEventListener("dblclick", (() => {
 \echo   if (td.title){
 \echo   console.log(td.title);
@@ -710,6 +767,7 @@ SELECT to_jsonb(r) FROM
 \echo   document.getElementById("tblstmnt").remove();
 \echo   document.getElementById("statements").innerText="pg_stat_statements info is not available"
 \echo }
+\echo function checkchkpntbgwrtr(){
 \echo trs=document.getElementById("tblchkpnt").rows;
 \echo if (trs.length > 1){
 \echo   tr=trs[1]
@@ -719,14 +777,21 @@ SELECT to_jsonb(r) FROM
 \echo   if(tr.cells[1].innerText < 10 ){
 \echo     tr.cells[1].classList.add("high"); tr.cells[1].title="checkpoints are too frequent. consider checkpoint_timeout=1800";
 \echo   }
-\echo   if(tr.cells[13].innerText > 25){
+\echo   if(tr.cells[11].innerText > 50){
+\echo     tr.cells[11].classList.add("high"); tr.cells[11].title="Checkpointer is taking high load of cleaning dirty buffers";
+\echo   }
+\echo   if(tr.cells[13].innerText > 30){
 \echo     tr.cells[13].classList.add("high"); tr.cells[13].title="too many dirty pages cleaned by backends";
+\echo     strfind += "<li>High <b>memory pressure</b>. Consider increasing RAM and shared_buffers</li>";   
 \echo     if(tr.cells[12].innerText < 30){
 \echo       tr.cells[12].classList.add("high"); tr.cells[12].title="bgwriter is not efficient";
-\echo       if(tr.cells[14].innerText < 30){
+\echo       if(tr.cells[14].innerText > 30){
 \echo         tr.cells[14].classList.add("high"); tr.cells[14].title="bgwriter could run more frequently. reduce bgwriter_delay";
 \echo       }
 \echo       if(tr.cells[15].innerText > 30){
+\echo         let param = params.find(p => p.param === "bgwriter_lru_maxpages");
+\echo         param["suggest"] = Math.ceil((parseInt(param["val"]) + tr.cells[15].innerText/20*100)/100)*100;
+\echo         evalParam("bgwriter_lru_maxpages");
 \echo         tr.cells[15].classList.add("high"); tr.cells[15].title="bgwriter halts too frequently. increase bgwriter_lru_maxpages";
 \echo       }
 \echo     }
@@ -736,7 +801,7 @@ SELECT to_jsonb(r) FROM
 \echo     document.getElementById("tblchkpnt").classList.add("high");
 \echo     document.getElementById("tblchkpnt").title = "Sufficient bgwriter stats are not available. This could happen if data is collected immediately after the stats reset or a crash. At least one day of stats are required to do meaningful calculations";
 \echo   }
-\echo }
+\echo }}
 \echo tab=document.getElementById("tblreplstat")
 \echo if (tab.rows.length > 1){
 \echo   for(var i=1;i<tab.rows.length;i++){

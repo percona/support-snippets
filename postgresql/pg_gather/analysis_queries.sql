@@ -158,6 +158,20 @@ LEFT JOIN pg_get_class p ON i.inhparent = p.reloid
 LEFT JOIN pg_get_class c ON i.inhrelid = c.reloid
 ORDER BY 1,2;
 
+--20. Invalid indexes
+SELECT ind.relname index, indexrelid indexoid,tab.relname table ,indrelid tableoid 
+FROM pg_get_index i
+LEFT JOIN pg_get_class ind ON i.indexrelid = ind.reloid
+LEFT JOIN pg_get_class tab ON i.indrelid = tab.reloid
+WHERE i.indisvalid=false;
+
+--21. User and database level parameters. In the decreasing order of priority
+SELECT rolname,datname,setting,split_part(setting,'=',1) 
+FROM pg_get_db_role_confs drc
+LEFT JOIN LATERAL unnest(config) AS setting ON TRUE
+LEFT JOIN pg_get_db db ON drc.db = db.datid
+LEFT JOIN pg_get_roles rol ON rol.oid = drc.setrole
+ORDER BY 1,2;
 
 
 =======================HISTORY SCHEMA ANALYSIS=========================

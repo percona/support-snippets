@@ -31,7 +31,7 @@ for ( i = 0; i < ldb.databases.length; i++ ) {
           for ( k2 = 0; k2 < indexes.length; k2++ ) { 
             if ( k1 != k2 ) { 
               if (indexes[k1].startsWith(indexes[k2],0)) { 
-                print("{ "+indexes[k2]+" } is the left prefix of { "+indexes[k1]+" } and should be dropped");
+                print("{ "+indexes_name[k2]+" } is the left prefix of { "+indexes_name[k1]+" } and should be dropped");
                 print("Drop command: db.getSiblingDB('" + db + "')." + cpd[j] + ".dropIndex(" + indexes_name[k2] + ")");
                 founddup = true; 
               } 

@@ -20,22 +20,25 @@ for ( i = 0; i < ldb.databases.length; i++ ) {
 
         for ( k = 0; k < indexstats.length; k++ ) { 
           if ( k == 0) {
-            print("Collection :"+cpd[j]); 
+            print("Collection :"+cpd[j]);            
           }
-          
+
+          shardName = ((JSON.stringify(indexstats[k].shard)));
           indexfield = ((JSON.stringify(indexstats[k].key)));
           indexusage = ((JSON.stringify(indexstats[k].accesses.ops)));
           indexes_name = (JSON.stringify(indexstats[k].name)).replace(/,/g ,"_");
           
           if (indexfield != '{"_id":1}') {
-            print("Index name: "  + indexes_name);
-            print("Index columns: " + indexfield + " ==> ",indexusage);
-            print("Drop command: db.getSiblingDB('" + ldb.databases[i].name + "')." + cpd[j] + ".dropIndex(" + indexes_name + ")");
+            if(typeof shardName !== "undefined") {
+              print("   Shard : "  + shardName);
+            }
+            print("   Index name: "  + indexes_name);
+            print("   Index columns: " + indexfield + " ==> ",indexusage);
+            print("   Drop command: db.getSiblingDB('" + ldb.databases[i].name + "')." + cpd[j] + ".dropIndex(" + indexes_name + ")");
+            print("\n");
           }
         }
-        print("\n");
       } 
     } 
-    print("\n");
   }
 }

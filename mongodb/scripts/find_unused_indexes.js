@@ -20,23 +20,20 @@ for ( i = 0; i < ldb.databases.length; i++ ) {
 
         for ( k = 0; k < indexstats.length; k++ ) { 
           if ( k == 0) {
-            print("COLL :"+cpd[j]); 
+            print("Collection :"+cpd[j]); 
           }
           
-          indexname = ((JSON.stringify(indexstats[k].key)));
+          indexfield = ((JSON.stringify(indexstats[k].key)));
           indexusage = ((JSON.stringify(indexstats[k].accesses.ops)));
           indexes_name = (JSON.stringify(indexstats[k].name)).replace(/,/g ,"_");
           
-
-          if (indexname != '{"_id":1}') {
-            print(indexname," ==> ",indexusage);
-            print("Drop command: db.getSiblingDB('" + db + "')." + cpd[j] + ".dropIndex(" + indexes_name + ")");
-
+          if (indexfield != '{"_id":1}') {
+            print("Index name: "  + indexes_name);
+            print("Index columns: " + indexfield + " ==> ",indexusage);
+            print("Drop command: db.getSiblingDB('" + ldb.databases[i].name + "')." + cpd[j] + ".dropIndex(" + indexes_name + ")");
           }
         }
-     
         print("\n");
-        
       } 
     } 
     print("\n");

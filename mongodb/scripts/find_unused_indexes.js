@@ -16,7 +16,7 @@ for ( i = 0; i < ldb.databases.length; i++ ) {
 
       if ( cpd[j] !=  'system.profile' ) { 
 
-        var indexstats = JSON.parse(JSON.stringify(db.runCommand( { aggregate : cpd[j], pipeline : [ { $indexStats: { } }, { $match: { "accesses.ops": 0 } } ], cursor: { batchSize: 100 }  } ).cursor.firstBatch));
+        var indexstats = JSON.parse(JSON.stringify(db.runCommand( { aggregate : cpd[j], pipeline : [ { $indexStats: { } }, { $match: { "accesses.ops": 0 } } ], cursor: { batchSize: 1000 }  } ).cursor.firstBatch));
 
         for ( k = 0; k < indexstats.length; k++ ) { 
           if ( k == 0) {

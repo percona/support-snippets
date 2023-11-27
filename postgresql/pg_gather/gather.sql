@@ -1,11 +1,11 @@
 ---- pg_gather : Gather Performance Metics and PostgreSQL Configuration
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
-\echo '--**** IMPORTANT !!: PLEASE DONT COPY-PASTE THE OUTPUT. TEXT EDITORS CAN DESTROY THE TSV FORMATTING AND THE OUTPUT MAY NOT BE USEFUL THERE AFTER ****--'
+\echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 23
+\set ver 24
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
-SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( current_database() != 'template1' ) as fullgather \gset
+SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( current_database() != 'template1' ) as fullgather \gset
 
 \if :fullgather
 ---Error out and exit, unless healthy
@@ -41,13 +41,15 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLI
 \echo '\\.'
 \endif
 
-\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline, current_wal) FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline,
+\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,current_wal) FROM stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid,
 CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
 ) TO stdin; 
 \echo '\\.'
 
-\if :pg14
+\if :pg16
+   \echo COPY pg_get_activity (datid, pid ,usesysid ,application_name ,state ,query ,wait_event_type ,wait_event ,xact_start ,query_start ,backend_start ,state_change ,client_addr, client_hostname, client_port, backend_xid ,backend_xmin, backend_type,ssl ,sslversion ,sslcipher ,sslbits ,ssl_client_dn ,ssl_client_serial,ssl_issuer_dn ,gss_auth,gss_princ ,gss_enc,gss_delegation,leader_pid,query_id) FROM stdin;
+\elif :pg14
     \echo COPY pg_get_activity (datid, pid ,usesysid ,application_name ,state ,query ,wait_event_type ,wait_event ,xact_start ,query_start ,backend_start ,state_change ,client_addr, client_hostname, client_port, backend_xid ,backend_xmin, backend_type,ssl ,sslversion ,sslcipher ,sslbits ,ssl_client_dn ,ssl_client_serial,ssl_issuer_dn ,gss_auth ,gss_princ ,gss_enc,leader_pid,query_id) FROM stdin;
 \elif :pg13
     \echo COPY pg_get_activity (datid, pid ,usesysid ,application_name ,state ,query ,wait_event_type ,wait_event ,xact_start ,query_start ,backend_start ,state_change ,client_addr, client_hostname, client_port, backend_xid ,backend_xmin, backend_type,ssl ,sslversion ,sslcipher ,sslbits ,sslcompression ,ssl_client_dn ,ssl_client_serial,ssl_issuer_dn ,gss_auth ,gss_princ ,gss_enc,leader_pid) FROM stdin;
@@ -69,11 +71,11 @@ SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 --pg_stat_statements
 SELECT (select count(*) > 0 from pg_class where relname='pg_stat_statements') AS pg_stmnt \gset
 \if :pg_stmnt
-    \echo COPY pg_get_statements (userid,dbid,query,calls,total_time) FROM stdin;
+    \echo COPY pg_get_statements (userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written) FROM stdin;
 \if :pg13
-    \COPY (SELECT userid,dbid,query,calls,total_plan_time+total_exec_time "total_time" from pg_stat_statements) TO stdout;
+    \COPY (SELECT userid,dbid,query,calls,total_plan_time+total_exec_time "total_time",shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;','COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
 \else
-    \COPY (SELECT userid,dbid,query,calls,total_time from pg_stat_statements) TO stdout;
+    \COPY (SELECT userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;',    'COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
 \endif
     \echo '\\.'
 \endif
@@ -101,9 +103,9 @@ FROM pg_database d) TO stdin;
 \echo '\\.'
 
 \if :fullgather
---Users / Roles
-\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit) FROM stdin;
-COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit from pg_roles WHERE rolcanlogin) TO stdout;
+--Users / Roles, 
+\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,enc_method) FROM stdin;
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,left(rolpassword,1) enc_method from pg_authid WHERE rolcanlogin) TO stdout;
 \echo '\\.'
 
 --pg_settings
@@ -126,12 +128,26 @@ COPY ( SELECT setdatabase,setrole,setconfig FROM pg_db_role_setting) TO stdin;
 COPY (SELECT oid,relname,relkind,relnamespace,relpersistence,reloptions,pg_stat_get_blocks_fetched(oid),pg_stat_get_blocks_hit(oid) FROM pg_class WHERE relnamespace NOT IN (SELECT oid FROM pg_namespace WHERE nspname in ('pg_catalog','information_schema'))) TO stdin;
 \echo '\\.'
 
---Index usage info
+--Index info
+\if :pg16
+\echo COPY pg_get_index(indexrelid,indrelid,indisunique,indisprimary,indisvalid,numscans,size,lastuse) FROM stdin;
+COPY (SELECT indexrelid,indrelid,indisunique,indisprimary,indisvalid, pg_stat_get_numscans(indexrelid),pg_table_size(indexrelid),pg_stat_get_lastscan(indexrelid) from pg_index) TO stdin;
+\else
 \echo COPY pg_get_index(indexrelid,indrelid,indisunique,indisprimary,indisvalid,numscans,size) FROM stdin;
 COPY (SELECT indexrelid,indrelid,indisunique,indisprimary,indisvalid, pg_stat_get_numscans(indexrelid),pg_table_size(indexrelid) from pg_index) TO stdin;
+\endif
 \echo '\\.'
 
---Table usage Information 
+--Table Info
+\if :pg16
+\echo COPY pg_get_rel (relid,relnamespace,blks,n_live_tup,n_dead_tup,n_tup_ins,n_tup_upd,n_tup_del,n_tup_hot_upd,rel_size,tot_tab_size,tab_ind_size,rel_age,last_vac,last_anlyze,vac_nos,lastuse) FROM stdin;
+COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid) AS n_live_tup,pg_stat_get_dead_tuples(oid) AS n_dead_tup,
+   pg_stat_get_tuples_inserted(oid) n_tup_ins, pg_stat_get_tuples_updated(oid) n_tup_upd, pg_stat_get_tuples_deleted(oid) n_tup_del, pg_stat_get_tuples_hot_updated(oid) n_tup_hot_upd,
+   pg_relation_size(oid) rel_size,  pg_table_size(oid) tot_tab_size, pg_total_relation_size(oid) tab_ind_size, age(relfrozenxid) rel_age,
+   GREATEST(pg_stat_get_last_autovacuum_time(oid),pg_stat_get_last_vacuum_time(oid)), GREATEST(pg_stat_get_last_autoanalyze_time(oid),pg_stat_get_last_analyze_time(oid)),
+ pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid),pg_stat_get_lastscan(oid)
+ FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
+\else
 \echo COPY pg_get_rel (relid,relnamespace,blks,n_live_tup,n_dead_tup,n_tup_ins,n_tup_upd,n_tup_del,n_tup_hot_upd,rel_size,tot_tab_size,tab_ind_size,rel_age,last_vac,last_anlyze,vac_nos) FROM stdin;
 COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid) AS n_live_tup,pg_stat_get_dead_tuples(oid) AS n_dead_tup,
    pg_stat_get_tuples_inserted(oid) n_tup_ins, pg_stat_get_tuples_updated(oid) n_tup_upd, pg_stat_get_tuples_deleted(oid) n_tup_del, pg_stat_get_tuples_hot_updated(oid) n_tup_hot_upd,
@@ -139,6 +155,7 @@ COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid
    GREATEST(pg_stat_get_last_autovacuum_time(oid),pg_stat_get_last_vacuum_time(oid)), GREATEST(pg_stat_get_last_autoanalyze_time(oid),pg_stat_get_last_analyze_time(oid)),
  pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid)
  FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
+\endif
 \echo '\\.'
 
 --Bloat estimate on a 64bit machine with PG version above 9.0.
@@ -184,6 +201,11 @@ COPY (SELECT oid,nspname FROM pg_namespace) TO stdout;
 COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg_extension) TO stdout;
 \echo '\\.'
 
+--pg_hba rules
+\echo COPY pg_get_hba_rules(seq,typ,db,usr,addr,mask,method,err) FROM stdin;
+COPY (select line_number,type,database,user_name,address,netmask,auth_method,error from pg_hba_file_rules) TO stdout;
+\echo '\\.'
+
 --End fullgather before pg_get_roles (line: 102)
 \endif
 
@@ -222,6 +244,17 @@ COPY (SELECT wal_records,wal_fpi,wal_bytes,wal_buffers_full,wal_write,wal_sync,w
 \echo COPY pg_get_bgwriter FROM stdin;
 COPY ( SELECT * FROM pg_stat_bgwriter ) TO stdout;
 \echo '\\.'
+
+--IO stats
+\if :pg16
+\echo COPY pg_get_io(btype,obj,context,reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset) FROM stdin;
+COPY ( SELECT CASE backend_type WHEN 'background writer' THEN 'G' ELSE left(backend_type,1) END btype, left(object,1) obj,
+CASE context WHEN 'bulkread' THEN 'R' WHEN 'bulkwrite' THEN 'W' ELSE left(context,1) END context,
+reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset
+FROM pg_stat_io WHERE backend_type NOT LIKE 's%'
+) TO stdout;
+\echo '\\.'
+\endif
 
 --Active session (again)
 \o /dev/null

@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS pg_get_pidblock;
 DROP TABLE IF EXISTS pg_pid_wait;
 DROP TABLE IF EXISTS pg_replication_stat;
 DROP TABLE IF EXISTS pg_get_wal;
+DROP TABLE IF EXISTS pg_get_io;
 DROP TABLE IF EXISTS pg_archiver_stat;
 DROP TABLE IF EXISTS pg_tab_bloat;
 DROP TABLE IF EXISTS pg_get_toast;
@@ -26,6 +27,7 @@ DROP TABLE IF EXISTS pg_get_bgwriter;
 DROP TABLE IF EXISTS pg_get_roles;
 DROP TABLE IF EXISTS pg_get_extension;
 DROP TABLE IF EXISTS pg_get_slots;
+DROP TABLE IF EXISTS pg_get_hba_rules;
 DROP TABLE IF EXISTS pg_get_ns;
 DROP TABLE IF EXISTS pg_gather_end;
 
@@ -45,6 +47,7 @@ CREATE UNLOGGED TABLE pg_gather (
     server inet,
     reload_ts timestamp with time zone,
     timeline int,
+    systemid bigint,
     current_wal pg_lsn
 );
 
@@ -83,6 +86,7 @@ CREATE UNLOGGED TABLE pg_get_activity (
     gss_auth boolean,
     gss_princ text,
     gss_enc boolean,
+    gss_delegation boolean,
     leader_pid integer,
     query_id bigint
 );
@@ -92,7 +96,13 @@ CREATE UNLOGGED TABLE pg_get_statements(
     dbid oid,
     query text,
     calls bigint,
-    total_time double precision
+    total_time double precision,
+    shared_blks_hit bigint,
+    shared_blks_read bigint,
+    shared_blks_dirtied bigint,
+    shared_blks_written bigint,
+    temp_blks_read bigint,
+    temp_blks_written bigint
 );
 
 
@@ -131,7 +141,8 @@ CREATE UNLOGGED TABLE pg_get_roles (
     rolsuper boolean,
     rolreplication boolean,
     rolconnlimit integer,
-    rolconfig text[]  --remove this column, because this is anyway info is from pg_db_role_setting
+    rolconfig text[],  --remove this column, because we can derive info from pg_get_db_role_confs
+    enc_method char
 );
 
 CREATE UNLOGGED TABLE pg_get_confs (
@@ -178,7 +189,8 @@ CREATE UNLOGGED TABLE pg_get_index (
     indisprimary boolean,
     indisvalid boolean,
     numscans bigint,
-    size bigint
+    size bigint,
+    lastuse timestamp with time zone
 );
 --indexrelid - oid of the index
 --indrelid - oid of the corresponding table
@@ -199,7 +211,8 @@ CREATE UNLOGGED TABLE pg_get_rel (
     rel_age bigint,
     last_vac timestamp with time zone,
     last_anlyze timestamp with time zone,
-    vac_nos bigint
+    vac_nos bigint,
+    lastuse timestamp with time zone
 );
 
 
@@ -300,6 +313,27 @@ CREATE UNLOGGED TABLE pg_get_wal(
  stats_reset timestamp with time zone
 );
 
+CREATE UNLOGGED TABLE pg_get_io(
+ btype char(1), -- 'background writer=G'
+ obj char(1), -- 'bulkread=R, bulkwrite=W'
+ context char(1),
+ reads bigint,
+ read_time float8,
+ writes bigint,
+ write_time float8,
+ writebacks bigint,
+ writeback_time float8,
+ extends bigint,
+ extend_time float8,
+ op_bytes bigint,
+ hits bigint,
+ evictions bigint,
+ reuses bigint,
+ fsyncs bigint,
+ fsync_time float8,
+ stats_reset timestamptz
+);
+
 CREATE UNLOGGED TABLE pg_get_slots(
     slot_name text,
     plugin text,
@@ -312,6 +346,17 @@ CREATE UNLOGGED TABLE pg_get_slots(
     catalog_xmin xid,
     restart_lsn pg_lsn,
     confirmed_flush_lsn pg_lsn
+);
+
+CREATE UNLOGGED TABLE pg_get_hba_rules(
+ seq int,
+ typ text,
+ db text[],
+ usr text[],
+ addr text,
+ mask text,
+ method text,
+ err text
 );
 
 CREATE UNLOGGED TABLE pg_get_ns(

@@ -175,6 +175,23 @@ LEFT JOIN pg_get_db db ON drc.db = db.datid
 LEFT JOIN pg_get_roles rol ON rol.oid = drc.setrole
 ORDER BY 1,2;
 
+--22.Aproximate connection time and connection count
+WITH gather AS (SELECT max(state_change) latest_ts FROM pg_get_activity)
+SELECT date_trunc('hour',gather.latest_ts-backend_start) conn_start,count(*) 
+FROM pg_get_activity JOIN gather ON TRUE
+WHERE state IS NOT NULL group by 1 order by 1;
+
+--23. Objects per schema
+WITH tab AS (SELECT r.relid,r.relnamespace FROM pg_get_rel r JOIN pg_get_class c ON r.relid = c.reloid AND c.relkind NOT IN ('t','p'))
+SELECT ns.nsname "Schema",COUNT(DISTINCT r.relid) "Tables",COUNT(DISTINCT i.indexrelid) "Indexes", 
+ COUNT(DISTINCT t.toastid) "TOASTs", COUNT(DISTINCT ti.indexrelid) "TOAST Indexes"
+FROM pg_get_ns ns
+JOIN tab r ON ns.nsoid = r.relnamespace   --Change to LEFT JOIN to get all schema
+LEFT JOIN pg_get_index i ON i.indrelid = r.relid
+LEFT JOIN pg_get_toast t ON r.relid = t.relid
+LEFT JOIN pg_get_index ti ON ti.indrelid = t.toastid
+GROUP BY 1;
+
 
 =======================HISTORY SCHEMA ANALYSIS=========================
 set timezone=UTC;
@@ -269,7 +286,7 @@ INSERT INTO pg_get_bgwriter SELECT checkpoints_timed,checkpoints_req,checkpoint_
     buffers_backend,buffers_backend_fsync,buffers_alloc,stats_reset FROM history.pg_get_bgwriter WHERE collect_ts = current_setting('pg_gather.ts')::timestamptz;
 
 
---Compare autovacuum runs
+--Compare two gather data and analyze the change
 ALTER TABLE pg_get_rel RENAME TO pg_get_rel_old;
 ALTER TABLE pg_gather RENAME TO pg_gather_old;
 select EXTRACT(EPOCH FROM ('2022-06-07 22:11:11'::timestamp - '2022-06-01 21:18:13'::timestamp))/86400;
@@ -277,7 +294,8 @@ select EXTRACT(EPOCH FROM ('2022-06-07 22:11:11'::timestamp - '2022-06-01 21:18:
 SELECT c.relname "Name" ,
 --r.relnamespace "Schema",r.n_live_tup "Live tup",r.n_dead_tup "Dead tup", CASE WHEN r.n_live_tup <> 0 THEN  ROUND((r.n_dead_tup::real/r.n_live_tup::real)::numeric,4) END "Dead/Live",
 --r.rel_size "Rel size",r.tot_tab_size "Tot.Tab size",r.tab_ind_size "Tab+Ind size",r.rel_age,to_char(r.last_vac,'YYYY-MM-DD HH24:MI:SS') "Last vacuum",to_char(r.last_anlyze,'YYYY-MM-DD HH24:MI:SS') "Last analyze",
-r.vac_nos - o.vac_nos "vacs", (r.vac_nos - o.vac_nos)/dys "vacs_day"
+r.vac_nos - o.vac_nos "vacs", (r.vac_nos - o.vac_nos)/dys "vacs_day",
+(r.tab_ind_size - o.tab_ind_size)/1024/1024 "size change", (r.tab_ind_size - o.tab_ind_size)/1024/1024/dys "size per day"
 --ct.relname "Toast name",rt.tab_ind_size "Toast+Ind" ,rt.rel_age "Toast Age",GREATEST(r.rel_age,rt.rel_age) "Max age"
 FROM pg_get_rel r
 JOIN pg_get_rel_old o ON r.relid = o.relid
@@ -287,7 +305,7 @@ LEFT JOIN pg_get_toast t ON r.relid = t.relid
 LEFT JOIN pg_get_class ct ON t.toastid = ct.reloid
 LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
 LEFT JOIN pg_tab_bloat tb ON r.relid = tb.table_oid
-ORDER BY 3 DESC LIMIT 100;
+ORDER BY 5 DESC LIMIT 100;
 
 --And generate report like
 --psql -X -f report.sql > GatherReport_ts.html

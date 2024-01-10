@@ -2,7 +2,7 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 24
+\set ver 25
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( current_database() != 'template1' ) as fullgather \gset
@@ -15,6 +15,10 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 \echo 'SOMETHING WRONG, EXITING;'
 \echo '\\q'
 \echo '\\endif'
+--PG Server
+\echo COPY pg_srvr FROM stdin;
+\conninfo
+\echo '\\.'
 \endif
 
 ---Option for passing parameters
@@ -33,13 +37,6 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLI
 \set QUIET off
 \echo '\\t'
 \echo '\\r'
-
-\if :fullgather
---PG Server
-\echo COPY pg_srvr FROM stdin;
-\conninfo
-\echo '\\.'
-\endif
 
 \echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,current_wal) FROM stdin;
 COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid,
@@ -68,20 +65,8 @@ SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \gexec
 \echo '\\.'
 
---pg_stat_statements
-SELECT (select count(*) > 0 from pg_class where relname='pg_stat_statements') AS pg_stmnt \gset
-\if :pg_stmnt
-    \echo COPY pg_get_statements (userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written) FROM stdin;
-\if :pg13
-    \COPY (SELECT userid,dbid,query,calls,total_plan_time+total_exec_time "total_time",shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;','COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
-\else
-    \COPY (SELECT userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;',    'COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
-\endif
-    \echo '\\.'
-\endif
-
 --Database level info
-\echo COPY pg_get_db (datid,datname,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age,stats_reset) FROM stdin;
+\echo COPY pg_get_db (datid,datname,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age,mxidage,stats_reset) FROM stdin;
 COPY (SELECT d.oid, d.datname, 
 pg_stat_get_db_xact_commit(d.oid) AS xact_commit,
 pg_stat_get_db_xact_rollback(d.oid) AS xact_rollback,
@@ -97,11 +82,11 @@ pg_stat_get_db_temp_bytes(d.oid) AS temp_bytes,
 pg_stat_get_db_deadlocks(d.oid) AS deadlocks,
 pg_stat_get_db_blk_read_time(d.oid) AS blk_read_time,
 pg_stat_get_db_blk_write_time(d.oid) AS blk_write_time,
-pg_database_size(d.oid) AS db_size, age(datfrozenxid),
+pg_database_size(d.oid) AS db_size, age(datfrozenxid), mxid_age(datminmxid),
 pg_stat_get_db_stat_reset_time(d.oid) AS stats_reset
 FROM pg_database d) TO stdin;
 \echo '\\.'
-
+--Starting fullgather section
 \if :fullgather
 --Users / Roles, 
 \echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,enc_method) FROM stdin;
@@ -201,12 +186,37 @@ COPY (SELECT oid,nspname FROM pg_namespace) TO stdout;
 COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg_extension) TO stdout;
 \echo '\\.'
 
+--Check for extensions like pg_stat_statements and pg_stat_monitor
+SELECT count(*) FILTER (WHERE extname='pg_stat_statements') > 0 AS pgss,count(*) FILTER (WHERE extname='pg_stat_monitor') > 0 AS pgsm FROM pg_extension \gset
+\set stmnt N
+\if :pgss
+    \set stmnt S
+    \echo COPY pg_get_statements (userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written) FROM stdin;
+\if :pg13
+    COPY (SELECT userid,dbid,query,calls,total_plan_time+total_exec_time "total_time",shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;','COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
+\else
+    COPY (SELECT userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written FROM pg_stat_statements WHERE calls > 5 AND not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;',    'COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])) TO stdout;
+\endif
+\echo '\\.'
+\elif :pgsm
+\if :pg13
+ \set stmnt M
+ \echo COPY pg_get_statements (userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written) FROM stdin;
+ COPY ( SELECT userid,dbid,max(query) query,sum(calls) calls,sum(total_plan_time+total_exec_time) "total_time"
+ ,sum(shared_blks_hit) shared_blks_hit,sum(shared_blks_read) shared_blks_read,sum(shared_blks_dirtied) shared_blks_dirtied
+ ,sum(shared_blks_written) shared_blks_written,sum(temp_blks_read) temp_blks_read,sum(temp_blks_written) temp_blks_written
+ FROM pg_stat_monitor WHERE not upper(query) like any (array['DEALLOCATE%', 'SET %', 'RESET %', 'BEGIN%', 'BEGIN;','COMMIT%', 'END%', 'ROLLBACK%', 'SHOW%'])
+ GROUP BY queryid,1,2 ) TO stdout;
+ \echo '\\.'
+\endif
+\endif
+
 --pg_hba rules
 \echo COPY pg_get_hba_rules(seq,typ,db,usr,addr,mask,method,err) FROM stdin;
 COPY (select line_number,type,database,user_name,address,netmask,auth_method,error from pg_hba_file_rules) TO stdout;
 \echo '\\.'
 
---End fullgather before pg_get_roles (line: 102)
+--End fullgather, started before pg_get_roles (line: 102)
 \endif
 
 --Lock chain info
@@ -265,8 +275,8 @@ SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \echo '\\.'
 
 --End Marker
-\echo COPY pg_gather_end(end_ts,end_lsn) FROM stdin;
+\echo COPY pg_gather_end(end_ts,end_lsn,stmnt) FROM stdin;
 COPY ( SELECT current_timestamp,
-  CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
+  CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END,:'stmnt'::char
 ) TO stdin;
 \echo '\\.\n'

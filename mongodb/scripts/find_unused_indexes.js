@@ -1,7 +1,7 @@
 /* 
-Objective: This script will print in the output indexes that have never been used based on the access.
+Objective: This script will print in the output of every collection and their respective wiredTiger.uri file in the system.
 Last change (dd/mm/yyyy): 31/10/2023.
-What changed: Added the drop command, compatibility with sharded cluster, and formated the output.
+What changed: Added the script.
 Editor: Jean da Silva.
 */
 

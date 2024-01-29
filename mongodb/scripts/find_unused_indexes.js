@@ -1,5 +1,5 @@
 /* 
-Objective: This script will print in the output of every collection and their respective wiredTiger.uri file in the system.
+Objective: This script will print in every collection's wiredTiger output.uri file in the system.
 Last change (dd/mm/yyyy): 31/10/2023.
 What changed: Added the script.
 Editor: Jean da Silva.

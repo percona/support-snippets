@@ -33,6 +33,8 @@ AND backend_type = 'client backend'
 AND application_name NOT LIKE ALL (ARRAY['PostgreSQL JDBC Driver%','DBeaver%','pgAdmin%'])
 AND rolname = 'pmmmaint'
 
+
+/*  -- pg_get_block is no longer used after version 22
 --3.Which session is at the top of the blocking
 SELECT blocking_pid,statement_in_blocking_process,count(*)
  FROM pg_get_block WHERE blocking_pid not in (SELECT blocked_pid FROM pg_get_block)
@@ -51,7 +53,23 @@ SELECT pid,state FROM pg_get_activity WHERE pid IN
 SELECT blocking_pid,blocking_wait_event,count(*)
  from pg_get_block WHERE blocking_pid not in (SELECT blocked_pid FROM pg_get_block)
  GROUP BY 1,2;
+*/
+-- 3. Victims and blockers
+SELECT victim_pid,blocking_pids FROM pg_get_pidblock;
 
+-- 4. PIDs and Net/Delays
+WITH w AS (SELECT pid,count(*) cnt, max(itr) itr_max,min(itr) itr_min FROM pg_pid_wait group by 1),
+ g AS (SELECT max(itr_max) gmax_itr FROM w)
+SELECT pid,(((itr_max - itr_min)::float/gmax_itr)*2000 - cnt)*100/2000 AS "Net/Delay %" FROM w,g
+ WHERE ((itr_max - itr_min)::float/gmax_itr)*2000 - cnt > 0;
+
+-- 6. IO statistics PG 16+. Needs improvement
+SELECT 
+CASE btype WHEN 'a' THEN 'Autovacuum' WHEN 'C' THEN 'Client Backend' WHEN 'G' THEN 'BG writer' WHEN 'b' THEN 'background worker' WHEN 'c' THEN 'Client' 
+  WHEN 'C' THEN 'checkpointer'
+ELSE btype END, 
+* FROM pg_get_io 
+WHERE reads > 0 OR writes > 0  OR writebacks > 0 or extends > 0 OR hits > 0 OR evictions > 0 OR reuses > 0 OR fsyncs > 0;
 
 --7.TOP 5 Tables which require maximum maintenace memory
 WITH top_tabs AS (SELECT relid,n_live_tup*0.2*6/1024/1024/1024 maint_work_mem_gb 
@@ -307,5 +325,11 @@ LEFT JOIN pg_get_rel rt ON rt.relid = t.toastid
 LEFT JOIN pg_tab_bloat tb ON r.relid = tb.table_oid
 ORDER BY 5 DESC LIMIT 100;
 
---And generate report like
---psql -X -f report.sql > GatherReport_ts.html
+--Compare Primary and Standby for Index usage
+ALTER TABLE pg_get_index RENAME TO pg_get_index_old;
+SELECT ct.relname AS "Table", ci.relname as "Index",i.indisunique as "UK?",i.indisprimary as "PK?",i.numscans as "Scans",i.size,ci.blocks_fetched "Fetch",ci.blocks_hit*100/nullif(ci.blocks_fetched,0) "C.Hit%", to_char(i.lastuse,'YYYY-MM-DD HH24:MI:SS') "Last Use"
+  FROM pg_get_index i
+  JOIN pg_get_index_old oi ON i.indexrelid = oi.indexrelid
+  JOIN pg_get_class ct on i.indrelid = ct.reloid and ct.relkind != 't'
+  JOIN pg_get_class ci ON i.indexrelid = ci.reloid
+WHERE i.numscans = 0 and oi.numscans = 0;

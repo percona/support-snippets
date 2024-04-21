@@ -2,7 +2,7 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 25
+\set ver 26
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( current_database() != 'template1' ) as fullgather \gset
@@ -39,9 +39,15 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLI
 \echo '\\r'
 
 \echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,current_wal) FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid,
-CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END
-) TO stdin; 
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdin; 
+\if :{?ERROR}
+\if :ERROR
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, NULL ) TO stdin; 
+\endif
+\else
+do $$ BEGIN  RAISE '***** FATAL : MINIMUM PSQL VERSION 11 IS EXPECTED : PLEASE VERIFY : psql --version ********'; END; $$;
+\q
+\endif
 \echo '\\.'
 
 \if :pg16
@@ -88,9 +94,13 @@ FROM pg_database d) TO stdin;
 \echo '\\.'
 --Starting fullgather section
 \if :fullgather
+
 --Users / Roles, 
 \echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,enc_method) FROM stdin;
 COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,left(rolpassword,1) enc_method from pg_authid WHERE rolcanlogin) TO stdout;
+\if :ERROR
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,NULL FROM pg_roles WHERE rolcanlogin) TO stdout;
+\endif
 \echo '\\.'
 
 --pg_settings
@@ -214,6 +224,11 @@ SELECT count(*) FILTER (WHERE extname='pg_stat_statements') > 0 AS pgss,count(*)
 --pg_hba rules
 \echo COPY pg_get_hba_rules(seq,typ,db,usr,addr,mask,method,err) FROM stdin;
 COPY (select line_number,type,database,user_name,address,netmask,auth_method,error from pg_hba_file_rules) TO stdout;
+\echo '\\.'
+
+--pg_prepared_xacts
+\echo COPY pg_get_prep_xacts(txn,gid,prepared) FROM stdin;
+COPY (select transaction,gid,prepared FROM pg_prepared_xact()) TO stdout;
 \echo '\\.'
 
 --End fullgather, started before pg_get_roles (line: 102)

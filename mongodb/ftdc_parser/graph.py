@@ -18,14 +18,14 @@ def create_graph(_x, _y, _title, _metric, _filename):
 
   #x_array.append('start')
   for item in x:
-    if item <> '': x_array.append(item[-5:]);
+    if not item == '': x_array.append(item[-5:]);
   for item in y:
-    if item <> '': y_array.append(int(item));
+    if not item == '': y_array.append(int(item));
 
   #print x_array
   #print y_array
-  print x_array
-  print y_array
+  print(x_array)
+  print(y_array)
   fig, ax = plt.subplots()
   ax.plot(x_array, y_array)
 
@@ -48,5 +48,5 @@ for line in sys.stdin:
   else:
     yy = newline.split(';')
     if len(xx) > 1:
-      print 'Generating ' + str(yy[:1])
-      create_graph(xx,yy,'Test',str(yy[:1][0]), str(yy[:1][0]).replace('.','_'))
+      print('Generating ' + str(yy[:1]))
+      create_graph(xx,yy,'Test',str(yy[:1][0]), str(yy[:1][0]).replace('.','_').replace(' ','_').replace('/','_'))

@@ -16,7 +16,7 @@ https://github.com/10gen/ftdc-utils
 ### How to use:
 
 Install ftdc utils using:
-`go get github.com/10gen/ftdc-utils/cmd/ftdc`
+`go install github.com/10gen/ftdc-utils/cmd/ftdc@latest`
 and move the ftdc binary to /usr/bin
 
 From a running mongodb (3.2+) use ftdc tool to export as a JSON;

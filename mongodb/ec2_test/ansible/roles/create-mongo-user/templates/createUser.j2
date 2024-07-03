@@ -1,0 +1,8 @@
+// Create the Application user
+use admin;
+db.createUser( {
+    user: "{{ db_app_username }}",
+    pwd: "{{ db_app_password }}",
+    roles: [ { role: "userAdminAnyDatabase", db: "admin" } ],
+		roles: [ { role: 'root', db: 'admin' } ]
+});

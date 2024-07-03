@@ -1,0 +1,16 @@
+---
+  - name: Copy the file to the server
+    copy:
+      src: company.json.tar.gz
+      dest: /tmp/company.json.tar.gz
+
+  - name: Decompress the file
+    unarchive:
+      src: /tmp/company.json.tar.gz
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Load data into MongoDB
+    command: >
+      mongoimport --uri "mongodb://{{ db_app_username }}:{{ db_app_password }}@{{ groups['mongo_replica_set'][0] }}:27017/percona?authSource=admin"
+      --collection company --file /tmp/company.json

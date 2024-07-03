@@ -1,0 +1,34 @@
+# Where and how to store data.
+storage:
+  dbPath: {{mongodb_db_path}}
+  journal:
+    enabled: true
+    commitIntervalMs : 500
+
+systemLog:
+  destination: file
+  logAppend: true
+  path: {{mongodb_log_path}}mongod.log
+  verbosity: 0
+
+# network interfaces
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+processManagement:
+  fork: true
+  timeZoneInfo: /usr/share/zoneinfo
+  pidFilePath: /var/run/mongod.pid
+
+security:
+  authorization: enabled
+  keyFile: {{mongodb_db_path}}keyfile
+
+operationProfiling:
+   mode: "slowOp"
+   slowOpThresholdMs: 100
+
+replication:
+  oplogSizeMB: 1024
+  replSetName: {{replicaSetName}}

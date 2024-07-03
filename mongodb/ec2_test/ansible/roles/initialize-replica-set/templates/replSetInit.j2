@@ -1,0 +1,9 @@
+rs.initiate(
+   {
+      _id: "{{ replicaSetName }}",
+      version: 1,
+      members: [
+         { _id: 0, host : "{{ ansible_hostname }}" }
+      ]
+   }
+)

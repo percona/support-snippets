@@ -1,0 +1,8 @@
+---
+- debug: msg="current host:{{ inventory_hostname }}"
+
+- name: copy createUser script
+  template: src=createUser.j2 dest=/tmp/createUser.js
+
+- name: create application user
+  shell: mongosh "mongodb://{{ db_admin_username }}:{{ db_admin_password }}@{{ ansible_play_batch[0] }}:27017/percona?authSource=admin" < /tmp/createUser.js

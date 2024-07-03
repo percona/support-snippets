@@ -1,0 +1,24 @@
+---
+  - name: Ensure the mongod service is stopped
+    systemd:
+      name: mongod
+      state: stopped
+
+  # Update mongod.conf again but now with security configured
+  - name: Update mongod.conf
+    template:
+      src: mongod.conf.j2
+      dest: /etc/mongod.conf
+
+  - name: Copy the keyfile for authentication
+    copy:
+      src=keyfile
+      dest={{ mongodb_db_path }}/keyfile
+      owner=mongod
+      group=mongod
+      mode=0400
+
+  - name: Ensure the mongod service is running
+    systemd:
+      name: mongod
+      state: started

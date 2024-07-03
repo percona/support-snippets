@@ -1,0 +1,8 @@
+---
+- debug: msg="current host:{{ inventory_hostname }}"
+
+- name: copy createAdmin script
+  template: src=createAdmins.j2 dest=/tmp/createAdmins.js
+
+- name: create administrator user
+  shell: mongosh < /tmp/createAdmins.js

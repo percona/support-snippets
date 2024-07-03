@@ -1,0 +1,8 @@
+// Create administrative users
+use admin;
+db.createUser( {
+    user: "{{ db_admin_username }}",
+    pwd: "{{ db_admin_password }}",
+    roles: [ { role: "userAdminAnyDatabase", db: "admin" } ],
+		roles: [ { role: 'root', db: 'admin' } ]
+});

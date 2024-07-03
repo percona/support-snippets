@@ -1,0 +1,11 @@
+---
+  - name: Copy the file to the server
+    copy:
+      src: company.json.tar.gz
+      dest: /tmp/company.json.tar.gz
+
+  - name: Decompress the file
+    unarchive:
+      src: /tmp/company.json.tar.gz
+      dest: /tmp/
+      remote_src: yes

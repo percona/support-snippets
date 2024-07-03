@@ -1,0 +1,71 @@
+---
+# This playbook deploy a secure mongodb replica set on Ubuntu hosts
+
+# Install packages and configure the OS
+- name: Install basic packages and configure the OS
+  hosts: all
+  become: yes
+  roles:
+  - role: os-setup
+
+# Install mongo utilities in the application server
+- name: Install mongosh in the application server
+  hosts: app
+  become: yes
+  roles:
+  - role: install-mongosh
+
+# Install mongodb on each node
+- name: Install PSMDB database
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: install-psmdb
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Add admin user in the first MongoDB node
+- name: Create the Admin user in the first MongoDB node
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: create-mongo-admin-user
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Configure the /etc/mongod.conf
+- name: Editing MongoDB configuration file /etc/mongod.conf
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: mongodb-configuration
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Initialize the Replica Set in the first node
+- name: Initializing the replica set
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: initialize-replica-set
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Add the application user in the first MongoDB node
+- name: Create the Application user in the first MongoDB node
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: create-mongo-user
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Run mongoimport to import the data sample to the PRIM server
+- name: Copy the JSON file to the PRIMARY server
+  hosts: mongo_replica_set
+  become: yes
+  roles:
+  - role: copy-data-prim-mongo
+    when: inventory_hostname == ansible_play_batch[0]
+
+# Run mongoimport to import the data sample to the PRIM server
+- name: Load Mongo Data
+  hosts: app
+  become: yes
+  roles:
+  - role: load-mongo-data

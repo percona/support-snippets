@@ -1,0 +1,8 @@
+mongodb_version:  psmdb-60
+db_admin_username: admin
+db_admin_password: percona
+mongodb_db_path: /var/lib/mongodb/
+mongodb_log_path: /var/log/mongodb/
+replicaSetName: rs_everest
+db_app_username: everest_user
+db_app_password: percona

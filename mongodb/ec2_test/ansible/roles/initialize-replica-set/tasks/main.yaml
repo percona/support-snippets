@@ -1,0 +1,6 @@
+---
+  - name: Create file to initiate replica set
+    template: src=replSetInit.j2 dest=/tmp/replSetInit.js
+
+  - name: Initialize the replica set
+    shell: mongosh "mongodb://{{ db_admin_username }}:{{ db_admin_password }}@localhost:27017/percona?authSource=admin" < /tmp/replSetInit.js

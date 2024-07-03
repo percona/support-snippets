@@ -1,0 +1,13 @@
+---
+    # https://docs.percona.com/percona-server-for-mongodb/6.0/install/apt.html
+    - name: Enable {{ mongodb_version }} release
+      command: "percona-release enable {{mongodb_version}} release"
+
+    - name: "Update apt cache"
+      apt:
+        update_cache: yes
+
+    - name: Install MongoDB utilities
+      apt:
+        name: percona-server-mongodb
+        state: present

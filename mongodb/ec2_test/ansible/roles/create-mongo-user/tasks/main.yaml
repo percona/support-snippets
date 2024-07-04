@@ -1,6 +1,4 @@
 ---
-- debug: msg="current host:{{ inventory_hostname }}"
-
 - name: copy createUser script
   template: src=createUser.j2 dest=/tmp/createUser.js
 

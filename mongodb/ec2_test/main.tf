@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_security_group" "ec2-interview-sg" {
-  name        = var.security_group_name
+  name        = "${var.security_group_name}-${var.candidate_name}"
   description = "Security group for the interview instances"
 
   // Ingress rule allowing all traffic
@@ -30,7 +30,7 @@ resource "aws_instance" "app-interview-instance" {
   key_name      = var.key_name
   security_groups = [aws_security_group.ec2-interview-sg.name]  # Specify the security group name
   root_block_device {
-    volume_size = 100  # Size in GB
+    volume_size = 150  # Size in GB
   }
   tags = {
     Name = "${var.candidate_name}-app"
@@ -45,7 +45,7 @@ resource "aws_instance" "mongo-interview-instances" {
   security_groups = [aws_security_group.ec2-interview-sg.name]  # Specify the security group name
   root_block_device {
     volume_size = 100  # Size in GB
-  }  
+  }
   tags = {
     Name = "${var.candidate_name}-mongo-rs-${count.index}"
   }

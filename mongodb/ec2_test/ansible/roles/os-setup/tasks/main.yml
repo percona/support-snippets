@@ -1,37 +1,28 @@
 ---
-    - name: Install basic OS packages
-      apt:
-        name:
-          - lsb-release
-          - gnupg
-          - wget
-          - strace
-          - sysstat
-          - telnet
-        state: present
-        update_cache: yes
+  - name: Install basic OS packages
+    apt:
+      name:
+        - lsb-release
+        - gnupg
+        - wget
+        - strace
+        - sysstat
+        - telnet
+      state: present
+      update_cache: yes
 
-    - name: Download Percona Repository Package
-      command: wget https://repo.percona.com/apt/percona-release_latest.{{ ansible_distribution_release }}_all.deb
-      args:
-        chdir: /tmp
+  - name: Download and install Percona Repository Package
+    apt:
+      deb: "https://repo.percona.com/apt/percona-release_latest.{{ ansible_distribution_release }}_all.deb"
 
-    - name: "Install percona-release package"
-      apt:
-        deb: "https://repo.percona.com/apt/percona-release_latest.{{ ansible_distribution_release }}_all.deb"
+  - name: Enable Percona Toolkit repository
+    command: "percona-release enable tools release"
+    args:
+      creates: /etc/apt/sources.list.d/percona-release.list
+    notify: update_apt_cache
 
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
-    - name: Enable Percona Toolkit
-      command: "percona-release enable tools release"
-
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
-    - name: Install Percona Toolkit
-      apt:
-        name: percona-toolkit
-        state: present
+  - name: Install Percona Toolkit
+    apt:
+      name: percona-toolkit
+      state: present
+    notify: update_apt_cache

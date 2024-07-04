@@ -7,7 +7,7 @@
       apt:
         update_cache: yes
 
-    - name: Install MongoDB utilities
+    - name: Install MongoDB Tools
       apt:
         name: percona-server-mongodb
         state: present

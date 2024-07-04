@@ -10,12 +10,10 @@
       dest: /tmp/
       remote_src: yes
 
-  - name: Load data into MongoDB (first run)
+  - name: Load data into MongoDB
     command: >
       mongoimport --uri "mongodb://{{ db_app_username }}:{{ db_app_password }}@{{ groups['mongo_replica_set'][0] }}:27017/percona?authSource=admin"
       --collection company --file /tmp/company.json
-
-  - name: Load data into MongoDB (second run)
-    command: >
-      mongoimport --uri "mongodb://{{ db_app_username }}:{{ db_app_password }}@{{ groups['mongo_replica_set'][0] }}:27017/percona?authSource=admin"
-      --collection company --file /tmp/company.json
+    with_items:
+      - 1
+      - 2

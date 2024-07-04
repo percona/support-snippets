@@ -3,6 +3,7 @@
 
 # Install packages and configure the OS
 - name: Install basic packages and configure the OS
+  gather_facts: true
   hosts: all
   become: yes
   roles:
@@ -10,6 +11,7 @@
 
 # Install mongo utilities in the application server
 - name: Install mongosh in the application server
+  gather_facts: true
   hosts: app
   become: yes
   roles:
@@ -17,6 +19,7 @@
 
 # Install mongodb on each node
 - name: Install PSMDB database
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -25,6 +28,7 @@
 
 # Add admin user in the first MongoDB node
 - name: Create the Admin user in the first MongoDB node
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -33,6 +37,7 @@
 
 # Configure the /etc/mongod.conf
 - name: Editing MongoDB configuration file /etc/mongod.conf
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -41,6 +46,7 @@
 
 # Initialize the Replica Set in the first node
 - name: Initializing the replica set
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -49,6 +55,7 @@
 
 # Add the application user in the first MongoDB node
 - name: Create the Application user in the first MongoDB node
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -57,6 +64,7 @@
 
 # Run mongoimport to import the data sample to the PRIM server
 - name: Copy the JSON file to the PRIMARY server
+  gather_facts: true
   hosts: mongo_replica_set
   become: yes
   roles:
@@ -65,6 +73,7 @@
 
 # Run mongoimport to import the data sample to the PRIM server
 - name: Load Mongo Data
+  gather_facts: true
   hosts: app
   become: yes
   roles:

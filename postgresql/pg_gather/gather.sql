@@ -2,10 +2,10 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 26
+\set ver 27
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
-SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( current_database() != 'template1' ) as fullgather \gset
+SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( :SERVER_VERSION_NUM >= 170000 ) AS pg17, ( current_database() != 'template1' ) as fullgather \gset
 
 \if :fullgather
 ---Error out and exit, unless healthy
@@ -28,7 +28,7 @@ SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 
 --\endif
 
 \set QUIET on
-SET statement_timeout=60000;
+SET statement_timeout=180000;
 \t on
 \x off
 PREPARE pidevents AS
@@ -38,11 +38,12 @@ SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLI
 \echo '\\t'
 \echo '\\r'
 
-\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,current_wal) FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdin; 
 \if :{?ERROR}
+\set ERROR true
+\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,snapshot,current_wal) FROM stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdout; 
 \if :ERROR
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, NULL ) TO stdin; 
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), NULL ) TO stdout; 
 \endif
 \else
 do $$ BEGIN  RAISE '***** FATAL : MINIMUM PSQL VERSION 11 IS EXPECTED : PLEASE VERIFY : psql --version ********'; END; $$;
@@ -92,6 +93,10 @@ pg_database_size(d.oid) AS db_size, age(datfrozenxid), mxid_age(datminmxid),
 pg_stat_get_db_stat_reset_time(d.oid) AS stats_reset
 FROM pg_database d) TO stdin;
 \echo '\\.'
+
+--Source of top statement is unknown now
+\set stmnt N
+
 --Starting fullgather section
 \if :fullgather
 
@@ -119,8 +124,8 @@ COPY ( SELECT setdatabase,setrole,setconfig FROM pg_db_role_setting) TO stdin;
 \echo '\\.'
 
 --Major tables and indexes in current db
-\echo COPY pg_get_class (reloid,relname,relkind,relnamespace,relpersistence,reloptions,blocks_fetched,blocks_hit) FROM stdin;
-COPY (SELECT oid,relname,relkind,relnamespace,relpersistence,reloptions,pg_stat_get_blocks_fetched(oid),pg_stat_get_blocks_hit(oid) FROM pg_class WHERE relnamespace NOT IN (SELECT oid FROM pg_namespace WHERE nspname in ('pg_catalog','information_schema'))) TO stdin;
+\echo COPY pg_get_class (reloid,relname,relkind,relnamespace,relfilenode,reltablespace,relpersistence,reloptions,blocks_fetched,blocks_hit) FROM stdin;
+COPY (SELECT oid,relname,relkind,relnamespace,relfilenode,reltablespace,relpersistence,reloptions,pg_stat_get_blocks_fetched(oid),pg_stat_get_blocks_hit(oid) FROM pg_class WHERE relnamespace NOT IN (SELECT oid FROM pg_namespace WHERE nspname in ('pg_catalog','information_schema'))) TO stdin;
 \echo '\\.'
 
 --Index info
@@ -153,6 +158,11 @@ COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid
 \endif
 \echo '\\.'
 
+--Tablespace info
+\echo COPY pg_get_tablespace(tsoid,tsname,location) FROM stdin;
+COPY (SELECT oid,spcname,pg_tablespace_location(oid) FROM pg_tablespace) TO stdout;
+\echo '\\.'
+
 --Bloat estimate on a 64bit machine with PG version above 9.0.
 \echo COPY pg_tab_bloat(table_oid,est_pages) FROM stdin;
 COPY ( SELECT
@@ -173,17 +183,17 @@ FROM (
 ) AS rs
 JOIN pg_class cc ON cc.oid = rs.table_oid
 JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema' 
-) TO stdin;
+) TO stdout;
 \echo '\\.'
 
 --TOAST info
 \echo COPY pg_get_toast FROM stdin;
-COPY (SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdin;
+COPY (SELECT oid, reltoastrelid FROM pg_class WHERE reltoastrelid != 0 ) TO stdout;
 \echo '\\.'
 
 --Partitioning
 \echo COPY pg_get_inherits (inhrelid,inhparent) FROM stdin;
-COPY (SELECT inhrelid,inhparent FROM pg_inherits) TO stdin;
+COPY (SELECT inhrelid,inhparent FROM pg_inherits) TO stdout;
 \echo '\\.'
 
 --namespaces/schemas
@@ -198,7 +208,6 @@ COPY (select oid,extname,extowner,extnamespace,extrelocatable,extversion from pg
 
 --Check for extensions like pg_stat_statements and pg_stat_monitor
 SELECT count(*) FILTER (WHERE extname='pg_stat_statements') > 0 AS pgss,count(*) FILTER (WHERE extname='pg_stat_monitor') > 0 AS pgsm FROM pg_extension \gset
-\set stmnt N
 \if :pgss
     \set stmnt S
     \echo COPY pg_get_statements (userid,dbid,query,calls,total_time,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,temp_blks_read,temp_blks_written) FROM stdin;
@@ -267,13 +276,18 @@ COPY (SELECT wal_records,wal_fpi,wal_bytes,wal_buffers_full,wal_write,wal_sync,w
 
 --bgwriter
 \echo COPY pg_get_bgwriter FROM stdin;
+\if :pg17
+COPY (SELECT pg_stat_get_checkpointer_num_timed(),pg_stat_get_checkpointer_num_requested(),pg_stat_get_checkpointer_write_time(),pg_stat_get_checkpointer_sync_time(),
+pg_stat_get_checkpointer_buffers_written(),pg_stat_get_bgwriter_buf_written_clean(),pg_stat_get_bgwriter_maxwritten_clean(),NULL,NULL,pg_stat_get_buf_alloc(),pg_stat_get_bgwriter_stat_reset_time()) TO stdout;
+\else
 COPY ( SELECT * FROM pg_stat_bgwriter ) TO stdout;
+\endif
 \echo '\\.'
 
 --IO stats
 \if :pg16
 \echo COPY pg_get_io(btype,obj,context,reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset) FROM stdin;
-COPY ( SELECT CASE backend_type WHEN 'background writer' THEN 'G' ELSE left(backend_type,1) END btype, left(object,1) obj,
+COPY ( SELECT CASE backend_type WHEN 'background writer' THEN 'G' WHEN 'checkpointer' THEN 'k' ELSE left(backend_type,1) END btype, left(object,1) obj,
 CASE context WHEN 'bulkread' THEN 'R' WHEN 'bulkwrite' THEN 'W' ELSE left(context,1) END context,
 reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset
 FROM pg_stat_io WHERE backend_type NOT LIKE 's%'

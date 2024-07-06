@@ -69,14 +69,8 @@ This script may take over 20 seconds to run because it contains sleeps/delays. W
      cat gather.sql | kubectl exec -i <PGpod> -- psql -X -f - > out.tsv
    ```
 
-## Gathering data continuosly, but Partially
-To capture the details of an occasional problem, you may need to collect data multiple times. `pg_gather` has a special lightweight mode for continuous data gathering, which is automatically enabled when it connects to the "template1" database. You can schedule `gather.sql` to run every minute against the "template1" database and collect the output files into a directory.
-
-Following is an example for scheduling in Linux/Unix systems using `cron`.
-```
-* * * * * psql -U postgres -d template1 -X -f /path/to/gather.sql | gzip >  /path/to/out/out-`date +\%a-\%H.\%M`.txt.gz 2>&1
-```
-When connected to the `template1` database, the gather script collects only live, dynamic, performance-related information, skipping all object-specific information. This is called a **partial** gathering and it can be further compressed with gzip to reduce the size significantly.
+## Gathering data continuosly
+There could be requirements for collecting data continuously and repatedly. `pg_gather` has a special lightweight mode for continuous data gathering, which is automatically enabled when it connects to the "template1" database. Please refer to detailed [documentation specific to continuous and repated data collection](docs/continuous_collection.md)
 
 # 2. Data Analysis
 ## 2.1 Importing collected data
@@ -95,17 +89,7 @@ You may use your favourite web browser to read the report.
 
 NOTE: PostgreSQL version 13 or above is required to generate the analysis report.
 
-## 2.3 Importing "*Partial*" data
-As mentioned in the previous section, partial data gathering is helpful if we schedule the `gather.sql` as a simple continuous monitoring tool. A separate schema with the name `history` can hold the imported data.
-A script file with the name `history_schema.sql` is provided for creating this schema and objects.
-```
-psql -X -f history_schema.sql
-```
-This project provides a sample `imphistory.sh` file which automates importing partial data from multiple files into the tables in `history` schema. This script can be executed from the directory which contains all the output files. Multiiple files and Wild cards are allowed. Here is an example:
-```
-$ imphistory.sh out-*.gz > log.txt
-```
-Collecting the import log file is a good practice, as shown above.
+
 
 # ANNEXTURE 1 : Using PostgreSQL container and wrapper script
 The steps for data analysis mentioned above seem simple (single command), but they require a PostgreSQL instance to import the data into. An alternative is to use the `generate_report.sh` script, which can spin up a PostgreSQL Docker container and automate the entire process. To use this script, you must place it in a directory containing the `gather_schema.sql` and `gather_report.sql` files.

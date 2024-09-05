@@ -1,19 +1,17 @@
 db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
-      "attr.ns": { $exists: true },
       "id": 51803,
-      "attr.durationMillis": { "$gte": 100 },
       "t": {
-        "$gte": ISODate("2024-08-05T00:00:00Z"),
-        "$lt": ISODate("2024-08-06T00:00:00Z"),
-      }
+        "$gte": ISODate("2023-09-30T00:00:00Z"),
+        "$lt": ISODate("2023-11-02T00:00:00Z"),
+      },
+      "attr.ns": { $exists: true }
     }
   },
   {
     $project:{
       _id: 0,
-      msg: 1,
       t: 1,
       attr: 1,
       is_system: { $or:[
@@ -32,15 +30,9 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
         "ns": "$attr.ns",
         "type": "$attr.type"
       },
-      "count": {
-        "$sum": 1
-      },
-      "avg_ms": {
-        "$avg": "$attr.durationMillis"
-      },
-      "sum_ms": {
-        "$sum": "$attr.durationMillis"
-      },
+      "count":  { "$sum": 1 },
+      "avg_ms": { "$avg": "$attr.durationMillis" },
+      "sum_ms": { "$sum": "$attr.durationMillis" },
       "top_ms": {
         "$top": { output: [ "$attr.durationMillis" ], sortBy: { "attr.durationMillis": -1 }}
       },

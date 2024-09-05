@@ -49,7 +49,7 @@ config.set("displayBatchSize", 100)
 Create the indexes that you think that might be necessary for the aggregations:
 ```
 db.getSiblingDB('percona').getCollection('log').createIndex({id:1, t:1});
-db.getSiblingDB('percona').getCollection('log').createIndex({msg:1});
+db.getSiblingDB('percona').getCollection('log').createIndex({t:1, id:1});
 ```
 
 ## About the aggregations

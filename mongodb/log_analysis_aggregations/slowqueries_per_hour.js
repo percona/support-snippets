@@ -2,12 +2,9 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
       "id": 51803,
-      "attr.durationMillis": {
-        "$gte": 1
-      },
       "t": {
-        "$gte": ISODate("2024-08-05T00:00:00Z"),
-        "$lt": ISODate("2024-08-06T00:00:00Z"),
+        "$gte": ISODate("2023-09-30T00:00:00Z"),
+        "$lt": ISODate("2023-11-02T00:00:00Z"),
       }
     }
   },

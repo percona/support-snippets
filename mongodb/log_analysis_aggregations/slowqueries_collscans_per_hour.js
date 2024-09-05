@@ -5,7 +5,8 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       "t": {
         "$gte": ISODate("2023-09-30T00:00:00Z"),
         "$lt": ISODate("2023-11-02T00:00:00Z"),
-      }
+      },
+      "attr.planSummary": "COLLSCAN"
     }
   },
   {
@@ -22,8 +23,7 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
             "format": "%H:00",
             "date": "$t"
           }
-        },
-        "type": "$attr.type"
+        }
       },
       "count": {
         "$sum": 1
@@ -35,15 +35,13 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       "_id": 0,
       "date": "$_id.day",
       "hour": "$_id.hour",
-      "type": "$_id.type",
       "count": 1
     }
   },
   {
     "$sort": {
       "date": 1,
-      "hour": 1,
-      "type": 1
+      "hour": 1
     }
   }
 ]);

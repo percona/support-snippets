@@ -2,4 +2,4 @@
   - name: Copy the file to the server
     copy:
       src: company.json.tar.gz
-      dest: /tmp/company.json.tar.gz
+      dest: /company.json.tar.gz

@@ -2,10 +2,6 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
       "id": 51803,
-      "t": {
-        "$gte": ISODate("2023-09-30T00:00:00Z"),
-        "$lt": ISODate("2023-11-02T00:00:00Z"),
-      },
       $or: [
         { $expr: { $gt: [ "attr.storage.data.bytesRead", 0 ]}},
         { $expr: { $gt: [ "attr.storage.data.bytesWritten", 0 ]}}

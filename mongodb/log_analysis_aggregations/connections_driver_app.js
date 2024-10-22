@@ -18,4 +18,5 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       },
     }
   },
+  { $sort: { "count": -1 }}
 ]);

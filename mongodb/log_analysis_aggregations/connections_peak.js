@@ -1,22 +1,15 @@
 db.getSiblingDB('percona').getCollection('log').aggregate([
   {
-    "$match": {
+    $match: {
       "id": 22943,
     }
   },
   {
-    $project:{
-      _id: 0,
-      "id": 1,
-      "attr.connectionCount": 1
-    }
-  },
-  {
-    "$group": {
+    $group: {
       "_id": {
         "id": "$id",
       },
-      "max_conns": {
+      "ls_max_conns": {
         $top: { output: [ "$attr.connectionCount" ], sortBy: { "attr.connectionCount": -1 }}
       },
     }
@@ -24,7 +17,27 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     $project:{
       "_id": 0,
-      "max_conns": 1
+      "max_conns": { $first: "$ls_max_conns" }
     }
   },
+  {
+    $lookup:{
+      from: "log",
+      let: { lkp_max_conns: "$max_conns"},
+      pipeline: [
+        { $match:
+          { $expr:
+            { $and:
+              [
+                { $eq: ["$id", 22943] },
+                { $eq: ["$attr.connectionCount", "$$lkp_max_conns"]}
+              ]
+            }
+          }
+        },
+        { $project:{"_id": 0, "t": 1} }
+      ],
+      as: "max_conns_time"
+    }
+  }
 ]);

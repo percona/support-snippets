@@ -6,7 +6,8 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   },
   {
     $project:{
-      _id: 0,
+      "_id": 0,
+      "t": 1,
       "attr.remote": {
         $arrayElemAt: [ { $split: [ "$attr.remote", ':'] } , 0 ]
       }
@@ -19,6 +20,9 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       },
       "count": {
         "$sum": 1
+      },
+      "latest": {
+        "$top": { output: [ "$t" ], sortBy: { "t": -1 }}
       },
     }
   },

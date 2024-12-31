@@ -1,12 +1,12 @@
 db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
-      "id": {$in: [ 22944, 22943 ]}
+      "id": { $in: [ 22944, 22943 ]}
     }
   },
   {
     $project:{
-      _id: 0,
+      "_id": 0,
       "t": 1,
       "attr.remote": {
         $arrayElemAt: [ { $split: [ "$attr.remote", ':'] } , 0 ]
@@ -30,7 +30,7 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
             "date": "$t"
           }
         },
-        "ip_remote": "$attr.remote"
+        "remote_ip": "$attr.remote",
       },
       "count_opened": {
         "$sum": "$cnt_opened"
@@ -40,12 +40,12 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       },
     }
   },
-  { 
+  {
     "$project": {
       "_id": 0,
       "date": "$_id.day",
       "hour": "$_id.hour",
-      "ip_remote": "$_id.ip_remote",
+      "remote_ip": "$_id.remote_ip",
       "count_opened": 1,
       "count_closed": 1
     }
@@ -54,7 +54,7 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
     "$sort": {
       "date": 1,
       "hour": 1,
-      "ip_remote": 1
+      "remote_ip": 1
     }
   }
 ]);

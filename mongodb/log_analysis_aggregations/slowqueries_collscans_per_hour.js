@@ -2,6 +2,7 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
       "id": 51803,
+      "c": "COMMAND",
       "attr.planSummary": "COLLSCAN"
     }
   },

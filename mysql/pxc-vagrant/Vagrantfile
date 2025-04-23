@@ -1,0 +1,46 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# base of ips that will be user
+base_ip="192.168.54."
+
+# first ip to be used
+first_ip=32
+
+# the number of pxc nodes
+number_of_nodes=3
+
+# create an array to store the list of ips
+ips = [ "#{base_ip}#{first_ip}" ]
+
+# variable to store gcomm address, this will be passed to provision_node.sh
+gcomm_address=""
+
+# build the list of ips for each node and gcomm address
+(1..number_of_nodes).each do |a|
+  ips.push("#{base_ip}#{first_ip}")
+  if a != 1
+    gcomm_address="#{gcomm_address},"
+  end
+  gcomm_address="#{gcomm_address}#{base_ip}#{first_ip}"
+  first_ip += 1
+end
+ssh_port=235
+Vagrant.configure(2) do |config|
+  (1..number_of_nodes).each do |i|
+    config.vm.define "node-#{i}" do |node|
+      node.vm.box = "almalinux/9"
+      node.vm.host_name = "node#{i}"
+      node.vm.network "private_network", ip:ips[i]
+#      node.vm.network :forwarded_port, guest: 22, host: "#{ssh_port}#{i}", id: "ssh"
+    config.vm.provider :libvirt do |libvirt|
+      libvirt.cpus = 2
+      libvirt.memory = 3000
+    end
+      node.vm.provision :shell do |s|
+        s.path = "provision_node.sh"
+        s.args = [i, ips[i], gcomm_address, ips[1]]
+      end
+    end
+  end
+end

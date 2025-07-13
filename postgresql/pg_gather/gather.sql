@@ -2,7 +2,7 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 30
+\set ver 31
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( :SERVER_VERSION_NUM >= 170000 ) AS pg17, ( current_database() != 'template1' ) as fullgather \gset
@@ -140,12 +140,12 @@ COPY (SELECT indexrelid,indrelid,indisunique,indisprimary,indisvalid, pg_stat_ge
 
 --Table Info
 \if :pg16
-\echo COPY pg_get_rel (relid,relnamespace,blks,n_live_tup,n_dead_tup,n_tup_ins,n_tup_upd,n_tup_del,n_tup_hot_upd,rel_size,tot_tab_size,tab_ind_size,rel_age,last_vac,last_anlyze,vac_nos,lastuse) FROM stdin;
+\echo COPY pg_get_rel (relid,relnamespace,blks,n_live_tup,n_dead_tup,n_tup_ins,n_tup_upd,n_tup_del,n_tup_hot_upd,rel_size,tot_tab_size,tab_ind_size,rel_age,last_vac,last_anlyze,vac_nos,lastuse,dpart) FROM stdin;
 COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid) AS n_live_tup,pg_stat_get_dead_tuples(oid) AS n_dead_tup,
    pg_stat_get_tuples_inserted(oid) n_tup_ins, pg_stat_get_tuples_updated(oid) n_tup_upd, pg_stat_get_tuples_deleted(oid) n_tup_del, pg_stat_get_tuples_hot_updated(oid) n_tup_hot_upd,
    pg_relation_size(oid) rel_size,  pg_table_size(oid) tot_tab_size, pg_total_relation_size(oid) tab_ind_size, age(relfrozenxid) rel_age,
    GREATEST(pg_stat_get_last_autovacuum_time(oid),pg_stat_get_last_vacuum_time(oid)), GREATEST(pg_stat_get_last_autoanalyze_time(oid),pg_stat_get_last_analyze_time(oid)),
- pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid),pg_stat_get_lastscan(oid)
+ pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid),pg_stat_get_lastscan(oid), substring(relpartbound from 45 for 1)
  FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
 \else
 \echo COPY pg_get_rel (relid,relnamespace,blks,n_live_tup,n_dead_tup,n_tup_ins,n_tup_upd,n_tup_del,n_tup_hot_upd,rel_size,tot_tab_size,tab_ind_size,rel_age,last_vac,last_anlyze,vac_nos) FROM stdin;
@@ -153,7 +153,7 @@ COPY (select oid,relnamespace, relpages::bigint blks,pg_stat_get_live_tuples(oid
    pg_stat_get_tuples_inserted(oid) n_tup_ins, pg_stat_get_tuples_updated(oid) n_tup_upd, pg_stat_get_tuples_deleted(oid) n_tup_del, pg_stat_get_tuples_hot_updated(oid) n_tup_hot_upd,
    pg_relation_size(oid) rel_size,  pg_table_size(oid) tot_tab_size, pg_total_relation_size(oid) tab_ind_size, age(relfrozenxid) rel_age,
    GREATEST(pg_stat_get_last_autovacuum_time(oid),pg_stat_get_last_vacuum_time(oid)), GREATEST(pg_stat_get_last_autoanalyze_time(oid),pg_stat_get_last_analyze_time(oid)),
- pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid)
+ pg_stat_get_vacuum_count(oid)+pg_stat_get_autovacuum_count(oid),substring(relpartbound from 45 for 1)
  FROM pg_class WHERE relkind in ('r','t','p','m','')) TO stdin;
 \endif
 \echo '\\.'

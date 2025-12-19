@@ -2,18 +2,10 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 32
+\set ver 31
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
-SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16,
- ( :SERVER_VERSION_NUM >= 170000 ) AS pg17, ( :SERVER_VERSION_NUM >= 180000 ) AS pg18, ( current_database() != 'template1' ) as fullgather \gset
-
-\set QUIET on
-SET statement_timeout=180000;
-\t on
-\x off
-\a
-
+SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16, ( :SERVER_VERSION_NUM >= 170000 ) AS pg17, ( current_database() != 'template1' ) as fullgather \gset
 
 \if :fullgather
 ---Error out and exit, unless healthy
@@ -26,7 +18,6 @@ SET statement_timeout=180000;
 --PG Server
 \echo COPY pg_srvr FROM stdin;
 \conninfo
-\echo psql - :VERSION
 \echo '\\.'
 \endif
 
@@ -35,16 +26,24 @@ SET statement_timeout=180000;
 --\else
 --    \set FULL true
 --\endif
---\set QUIET off
+
+\set QUIET on
+SET statement_timeout=180000;
+\t on
+\x off
+PREPARE pidevents AS
+SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
+\a
+\set QUIET off
 \echo '\\t'
 \echo '\\r'
 
 \if :{?ERROR}
 \set ERROR true
-\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,snapshot,current_wal,bindir) FROM stdin;
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END, (select setting from pg_config where name = 'BINDIR')) TO stdout; 
+\echo COPY pg_gather (collect_ts,usr,db,ver,pg_start_ts,recovery,client,server,reload_ts,timeline,systemid,snapshot,current_wal) FROM stdin;
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END) TO stdout; 
 \if :ERROR
-COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), NULL, NULL ) TO stdout; 
+COPY (SELECT current_timestamp,current_user||' - pg_gather.V'||:ver ,current_database(),version(),pg_postmaster_start_time(),pg_is_in_recovery(),inet_client_addr(),inet_server_addr(),pg_conf_load_time(),(SELECT timeline_id FROM pg_control_checkpoint()) as timeline, (SELECT system_identifier FROM pg_control_system()) as systemid, txid_current_snapshot(), NULL ) TO stdout; 
 \endif
 \else
 do $$ BEGIN  RAISE '***** FATAL : MINIMUM PSQL VERSION 11 IS EXPECTED : PLEASE VERIFY : psql --version ********'; END; $$;
@@ -66,23 +65,16 @@ do $$ BEGIN  RAISE '***** FATAL : MINIMUM PSQL VERSION 11 IS EXPECTED : PLEASE V
 \copy (select * from  pg_stat_get_activity(NULL) where pid != pg_backend_pid()) to stdin
 \echo '\\.'
 
-BEGIN;
-PREPARE pidevents AS
-SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
 \o /dev/null
 SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \o
 \echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
-DEALLOCATE pidevents;
-END;
 \echo '\\.'
 
 --Database level info
-\echo COPY pg_get_db (datid,datname,encod,colat,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age,mxidage,stats_reset) FROM stdin;
+\echo COPY pg_get_db (datid,datname,xact_commit,xact_rollback,blks_fetch,blks_hit,tup_returned,tup_fetched,tup_inserted,tup_updated,tup_deleted,temp_files,temp_bytes,deadlocks,blk_read_time,blk_write_time,db_size,age,mxidage,stats_reset) FROM stdin;
 COPY (SELECT d.oid, d.datname, 
-pg_encoding_to_char(d.encoding) AS encoding, 
-d.datcollate AS collate, 
 pg_stat_get_db_xact_commit(d.oid) AS xact_commit,
 pg_stat_get_db_xact_rollback(d.oid) AS xact_rollback,
 pg_stat_get_db_blocks_fetched(d.oid) AS blks_fetch,
@@ -294,35 +286,21 @@ COPY ( SELECT * FROM pg_stat_bgwriter ) TO stdout;
 
 --IO stats
 \if :pg16
-\if :pg18
-\echo COPY pg_get_io(btype,obj,context,reads,read_bytes,read_time,writes,write_bytes,write_time,writebacks,writeback_time,extends,extend_bytes,extend_time,hits,evictions,reuses,fsyncs,fsync_time,stats_reset) FROM stdin;
-COPY ( SELECT CASE backend_type WHEN 'background writer' THEN 'G' WHEN 'checkpointer' THEN 'k'
-WHEN 'walwriter' THEN 'W' WHEN 'walsummarizer' THEN 'W' WHEN 'walreceiver' THEN 'r' WHEN 'slotsync worker' THEN 'l' ELSE left(backend_type,1) END btype
-, left(object,1) obj, CASE context WHEN 'bulkread' THEN 'R' WHEN 'bulkwrite' THEN 'W' ELSE left(context,1) END context,
-reads,read_bytes,read_time,writes,write_bytes, write_time,writebacks,writeback_time,extends,extend_bytes,extend_time,hits,evictions,reuses,fsyncs,fsync_time,stats_reset
-FROM pg_stat_io WHERE backend_type NOT LIKE 'st%'
-) TO stdout;
-\else
-\echo COPY pg_get_io(btype,obj,context,reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,hits,evictions,reuses,fsyncs,fsync_time,stats_reset) FROM stdin;
+\echo COPY pg_get_io(btype,obj,context,reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset) FROM stdin;
 COPY ( SELECT CASE backend_type WHEN 'background writer' THEN 'G' WHEN 'checkpointer' THEN 'k' ELSE left(backend_type,1) END btype, left(object,1) obj,
 CASE context WHEN 'bulkread' THEN 'R' WHEN 'bulkwrite' THEN 'W' ELSE left(context,1) END context,
-reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,hits,evictions,reuses,fsyncs,fsync_time,stats_reset
+reads,read_time,writes,write_time,writebacks,writeback_time,extends,extend_time,op_bytes,hits,evictions,reuses,fsyncs,fsync_time,stats_reset
 FROM pg_stat_io WHERE backend_type NOT LIKE 's%'
 ) TO stdout;
-\endif
 \echo '\\.'
 \endif
 
 --Active session (again)
-BEGIN;
-PREPARE pidevents AS
-SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
 \o /dev/null
 SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
 \o
 \echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 \gexec
-END;
 \echo '\\.'
 
 --End Marker

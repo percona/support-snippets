@@ -24,7 +24,8 @@ CREATE UNLOGGED TABLE pg_gather (
     timeline int,
     systemid bigint,
     snapshot pg_snapshot,
-    current_wal pg_lsn
+    current_wal pg_lsn,
+    bindir text
 );
 
 CREATE UNLOGGED TABLE pg_gather_end (
@@ -93,6 +94,8 @@ CREATE UNLOGGED TABLE pg_pid_wait(
 CREATE UNLOGGED TABLE pg_get_db (
     datid oid,
     datname text,
+    encod text,
+    colat text,
     xact_commit bigint,
     xact_rollback bigint,
     blks_fetch bigint,
@@ -282,14 +285,17 @@ CREATE UNLOGGED TABLE pg_get_io(
  obj char(1), -- 'bulkread=R, bulkwrite=W'
  context char(1),
  reads bigint,
+ read_bytes numeric,
  read_time float8,
  writes bigint,
+ write_bytes numeric,
  write_time float8,
  writebacks bigint,
  writeback_time float8,
  extends bigint,
+ extend_bytes numeric,
  extend_time float8,
- op_bytes bigint,
+ op_bytes bigint,  --Remove this column for PG18+
  hits bigint,
  evictions bigint,
  reuses bigint,

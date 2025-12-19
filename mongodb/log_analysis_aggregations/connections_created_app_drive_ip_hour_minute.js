@@ -1,7 +1,7 @@
 db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
-      "id": 22943,
+      "id": 51800,
     }
   },
   {
@@ -13,30 +13,28 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
             "date": "$t"
           }
         },
-        "hour": {
+        "hour_minute": {
           "$dateToString": {
-            "format": "%H:00",
+            "format": "%H:%M",
             "date": "$t"
           }
-        }
+        },
+        "app": "$attr.doc.application",
+        "driver": "$attr.doc.driver",
+        "remote_ip": {$arrayElemAt: [ { $split: [ "$attr.remote", ':'] } , 0 ]},
       },
       "count": {
         "$sum": 1
-      }
-    }
-  },
-  {
-    "$project": {
-      "_id": 0,
-      "date": "$_id.day",
-      "hour": "$_id.hour",
-      "count": 1
+      },
     }
   },
   {
     "$sort": {
-      "date": 1,
-      "hour": 1
+      "_id.day": 1,
+      "_id.hour_minute": 1,
+      "_id.app": 1,
+      "_id.driver": 1,
+      "_id.remote_ip": 1
     }
   }
 ]);

@@ -1,23 +1,8 @@
 db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$match": {
-      "id": 51803,
+      "id": 22943,
     }
-  },
-  {
-    $project:{
-      _id: 0,
-      "t": 1,
-      "attr": 1,
-      "is_system": { $or:[
-        { $regexMatch: { input: "$attr.ns", regex: /^admin/ }},
-        { $regexMatch: { input: "$attr.ns", regex: /^config/ }},
-        { $regexMatch: { input: "$attr.ns", regex: /^local/ }}
-      ]},
-    }
-  },
-  {
-    $match: { "is_system": false  }
   },
   {
     "$group": {
@@ -28,9 +13,9 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
             "date": "$t"
           }
         },
-        "hour": {
+        "hour_minute": {
           "$dateToString": {
-            "format": "%H:00",
+            "format": "%H:%M",
             "date": "$t"
           }
         }
@@ -44,14 +29,14 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
     "$project": {
       "_id": 0,
       "date": "$_id.day",
-      "hour": "$_id.hour",
+      "hour_minute": "$_id.hour_minute",
       "count": 1
     }
   },
   {
     "$sort": {
       "date": 1,
-      "hour": 1
+      "hour_minute": 1
     }
   }
 ]);

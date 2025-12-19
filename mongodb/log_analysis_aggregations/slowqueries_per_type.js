@@ -22,18 +22,6 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$group": {
       "_id": {
-        "day": {
-          "$dateToString": {
-            "format": "%Y-%m-%d",
-            "date": "$t"
-          }
-        },
-        "hour_minute": {
-          "$dateToString": {
-            "format": "%H:%M",
-            "date": "$t"
-          }
-        },
         "command_type": {
           $switch: {
             branches: [
@@ -61,16 +49,12 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$project": {
       "_id": 0,
-      "date": "$_id.day",
-      "hour_minute": "$_id.hour_minute",
       "type": "$_id.command_type",
       "count": 1
     }
   },
   {
     "$sort": {
-      "date": 1,
-      "hour_minute": 1,
       "command_type": 1
     }
   }

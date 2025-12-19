@@ -8,9 +8,6 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
     $project:{
       "_id": 0,
       "t": 1,
-      "attr.remote": {
-        $arrayElemAt: [ { $split: [ "$attr.remote", ':'] } , 0 ]
-      },
       "cnt_opened": { $cond: { if: { $eq: [ "$id", 22943 ] }, then: 1, else: 0 }},
       "cnt_closed": { $cond: { if: { $eq: [ "$id", 22944 ] }, then: 1, else: 0 }}
     }
@@ -30,7 +27,6 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
             "date": "$t"
           }
         },
-        "remote_ip": "$attr.remote",
       },
       "count_opened": {
         "$sum": "$cnt_opened"
@@ -45,7 +41,6 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
       "_id": 0,
       "date": "$_id.day",
       "hour": "$_id.hour",
-      "remote_ip": "$_id.remote_ip",
       "count_opened": 1,
       "count_closed": 1
     }
@@ -53,8 +48,7 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
   {
     "$sort": {
       "date": 1,
-      "hour": 1,
-      "remote_ip": 1
+      "hour": 1
     }
   }
 ]);

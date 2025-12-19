@@ -5,6 +5,21 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
     }
   },
   {
+    $project:{
+      _id: 0,
+      "t": 1,
+      "attr": 1,
+      "is_system": { $or:[
+        { $regexMatch: { input: "$attr.ns", regex: /^admin/ }},
+        { $regexMatch: { input: "$attr.ns", regex: /^config/ }},
+        { $regexMatch: { input: "$attr.ns", regex: /^local/ }}
+      ]},
+    }
+  },
+  {
+    $match: { "is_system": false  }
+  },
+  {
     "$group": {
       "_id": {
         "day": {

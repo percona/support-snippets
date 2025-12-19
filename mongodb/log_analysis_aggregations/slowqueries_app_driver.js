@@ -8,8 +8,16 @@ db.getSiblingDB('percona').getCollection('log').aggregate([
     $project:{
       "_id":0,
       "t": 1,
-      "client_data": { "$objectToArray": "$attr.command" }
+      "client_data": { "$objectToArray": "$attr.command" },
+      "is_system": { $or:[
+        { $regexMatch: { input: "$attr.ns", regex: /^admin/ }},
+        { $regexMatch: { input: "$attr.ns", regex: /^config/ }},
+        { $regexMatch: { input: "$attr.ns", regex: /^local/ }}
+      ]},
     }
+  },
+  {
+    $match: { "is_system": false  }
   },
   {"$unwind": "$client_data" },
   {"$project":{

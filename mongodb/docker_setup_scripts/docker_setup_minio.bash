@@ -2,21 +2,18 @@
 
 # create MongoDB containers
 ## ./docker_setup_psmdb_rs.bash
-# setup PBM
-## ./docker_setup_psmdb_pbm.bash
 
 # reuse variables from previous scripts
 
 # cleanup
 docker rm -f minio_${case_number}
 sudo rm -rf ${docker_base_dir}/minio_${case_number}
+docker network rm ${net_name}
 
 # initialize folder
 mkdir -pv ${docker_base_dir}/minio_${case_number}
 
-# not necessary if mongod process is started with my user, check pbm_setup
-# sudo chown -R mongod. ${docker_base_dir}/minio_${case_number}
-
+# start container
 docker run -d \
    -p 9000:9000 \
    -p 9001:9001 \

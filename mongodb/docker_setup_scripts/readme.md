@@ -5,7 +5,7 @@ This directory contains scripts to setup MongoDB containers with various configu
 ## Usage Notes
 
 - **Topology assumption:** Scripts that don't have `_rs` or `_sharded` in their name should be assumed to work with replica sets (`_rs`).
-- **Command blocks:** Commands that are not followed by double blank lines can be executed together as a single block. Double blank lines indicate the end of a logical block of commands or a pause point or where you should wait for the previous commands to complete before continuing.
+- **Command blocks:** These scripts were not designed to be executed all at once, but in command blocks. Commands that are not followed by double blank lines can be executed together as a single block. Double blank lines indicate the end of a logical block of commands or a pause point or where you should wait for the previous commands to complete before continuing.
 - The `Base Setup` scrips are always necessary. For any setup that involves TLS, the `docker_setup_tls_base_certs.sh` is necessary too.
 
 ## Scripts
@@ -50,6 +50,7 @@ NativeLDAP authentication and authorization for a replica set.
 | Script | Description |
 |--------|-------------|
 | `docker_setup_kmip.bash` | Configures KMIP server for data-at-rest encryption for a replica set. TLS enabled between MongoDB and KMIP |
+| `docker_setup_openbao.bash` | Configures OpenBao server for data-at-rest encryption for a replica set. TLS enabled between MongoDB and OpenBao. |
 
 ### PMM (Percona Monitoring and Management)
 

@@ -1,11 +1,16 @@
 # local psmdb docker replica set
 case_number=CS000TEST
-replica_count=3
-psmdb_version="8.0.16"
 base_dir="/bigdisk/${case_number}"
 docker_base_dir="${base_dir}/docker"
+
+psmdb_version="8.0.17"
+replica_count=7
+
 net_name="${case_number}-net"
 net_prefix="172.2.0"
+
+port_counter=0
+psmdb_port=29017
 
 # cleanup => errors are expected if the containers are not running or there are other containers using the network
 for i in $( seq 1 ${replica_count} ); do
@@ -74,15 +79,16 @@ sudo chown -vR 1001:1001 ${docker_base_dir}/psmdb_*
 # create docker network
 docker network create ${net_name} --subnet "${net_prefix}.0/24"
 # start containers
-psmdb_port=28017
-port_counter=0
 for i in $( seq 1 ${replica_count} ); do
   docker run -d --name psmdb_${case_number}_${i} --network ${net_name} --ip "${net_prefix}.$(( port_counter + 2 ))" -v ${docker_base_dir}/psmdb_${case_number}_${i}:/mongodb -p $(( psmdb_port + port_counter )):27017 percona/percona-server-mongodb:${psmdb_version} --config /mongodb/mongod.conf
   let port_counter++
 done
-# wait for initialization, might need to execute more than once until all return results. No such file or directory error can happen in the first run, too.
+# wait for initialization
 for i in $( seq 1 ${replica_count} ); do
-  echo -n "psmdb_${i}: "; sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log
+  until sudo grep -q "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log 2>/dev/null; do
+    sleep 1
+  done
+  echo -n "psmdb_${i}: ";sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log
 done
 
 # set and print IPs
@@ -104,7 +110,10 @@ echo "rs_document: "${rs_document}
 ## apply the document
 echo -n "psmdb_1: "; docker exec psmdb_${case_number}_1 ${mongo_binary} --quiet --eval "rs.initiate( ${rs_document} )" admin
 # wait for primary
-echo -n "psmdb_1: "; sudo tail -f ${docker_base_dir}/psmdb_${case_number}_1/log/mongod.log | grep "Transition to primary complete"
+until sudo grep -q "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_1/log/mongod.log 2>/dev/null; do
+  sleep 1
+done
+echo -n "psmdb_1: ";sudo grep "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_1/log/mongod.log
 
 # add and test user + check replica set
 docker exec psmdb_${case_number}_1 ${mongo_binary} --quiet --eval 'db.getSiblingDB("admin").createUser( { user: "testuser", pwd: "testpwd", roles: [ { role: "root", db: "admin" }]})' admin

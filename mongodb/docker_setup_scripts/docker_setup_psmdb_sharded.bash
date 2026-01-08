@@ -1,12 +1,18 @@
 # local psmdb docker sharded cluster
-case_number=CS0059465
-shard_count=1
-replica_count=1
-psmdb_version="7.0.26"
+case_number=CS000TEST
 base_dir="/bigdisk/${case_number}"
 docker_base_dir="${base_dir}/docker"
+
+psmdb_version="7.0.28"
+replica_count=3
+shard_count=3
+
 net_name="${case_number}-net"
 net_prefix="172.2.0"
+
+port_counter=0
+psmdb_port=29017
+mongos_port=28017
 
 # cleanup => errors are expected if the containers are not running or there are other containers using the network
 for i in $( seq 1 ${replica_count} ); do
@@ -121,8 +127,6 @@ sudo chown -vR 1001:1001 ${docker_base_dir}/psmdb_*
 # create docker network
 docker network create ${net_name} --subnet "${net_prefix}.0/24"
 # start containers
-psmdb_port=29017
-port_counter=0
 ## config
 for i in $( seq 1 ${replica_count} ); do
   docker run -d --name psmdb_${case_number}_config_${i} --network ${net_name} --ip "${net_prefix}.$(( port_counter + 2 ))" -v ${docker_base_dir}/psmdb_${case_number}_config_${i}:/mongodb -p $(( psmdb_port + port_counter )):27017 percona/percona-server-mongodb:${psmdb_version} --config /mongodb/mongod.conf
@@ -137,10 +141,20 @@ for j in $( seq 1 ${shard_count} ); do
 done
 # wait for initialization, might need to execute more than once until all return results
 ## config
-echo -n "config: "; sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_config_1/log/mongod.log
+for i in $( seq 1 ${replica_count} ); do
+  until sudo grep -q "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_config_${i}/log/mongod.log 2>/dev/null; do
+    sleep 1
+  done
+  echo -n "psmdb_config_${i}: ";sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_config_${i}/log/mongod.log
+done
 ## shards
 for j in $( seq 1 ${shard_count} ); do
-  echo -n "shard${j}: "; sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_shard${j}_1/log/mongod.log
+  for i in $( seq 1 ${replica_count} ); do
+    until sudo grep -q "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_shard${j}_${i}/log/mongod.log 2>/dev/null; do
+      sleep 1
+    done
+    echo -n "psmdb_shard${j}_${i}: ";sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_shard${j}_${i}/log/mongod.log
+  done
 done
 
 # set and print IPs
@@ -160,7 +174,7 @@ for j in $( seq 1 ${shard_count} ); do
   echo ""
 done
 
-# create an apply replica set config document with decreasing priority
+# create and apply replica set config documents with decreasing priority
 ## config
 instance_priority=${replica_count}
 rs_document="{_id : 'config-${case_number}', members: ["
@@ -173,7 +187,7 @@ rs_document=${rs_document::-1}"]}"
 echo "config rs_document: "${rs_document}
 ## apply the document
 echo -n "config: "; docker exec psmdb_${case_number}_config_1 ${mongo_binary} --quiet --eval "rs.initiate( ${rs_document} )" admin
-# shards
+## shards
 for j in $( seq 1 ${shard_count} ); do
   ## create each document
   instance_priority=${replica_count}
@@ -188,12 +202,18 @@ for j in $( seq 1 ${shard_count} ); do
   ## apply document
   echo -n "shard${j}: "; docker exec psmdb_${case_number}_shard${j}_1 ${mongo_binary} --quiet --eval "rs.initiate( ${rs_document} )" admin
 done
-# wait for primary, might need to execute more than once until all return results
+# wait for primary
 ## config
-echo -n "config: "; sudo grep "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_config_1/log/mongod.log
+until sudo grep -q "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_config_1/log/mongod.log 2>/dev/null; do
+  sleep 1
+done
+echo -n "psmdb_config_1: ";sudo grep "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_config_1/log/mongod.log
 ## shards
 for j in $( seq 1 ${shard_count} ); do
-  echo -n "shard${j}: "; sudo grep "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_shard${j}_1/log/mongod.log
+  until sudo grep -q "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_shard${j}_1/log/mongod.log 2>/dev/null; do
+    sleep 1
+  done
+  echo -n "psmdb_shard${j}_1: ";sudo grep "Transition to primary complete" ${docker_base_dir}/psmdb_${case_number}_shard${j}_1/log/mongod.log
 done
 
 # add shard user
@@ -206,10 +226,10 @@ done
 
 # test shard access
 ## config
-echo -n "config: "; docker exec psmdb_${case_number}_config_1 ${mongo_binary} --quiet --authenticationDatabase admin -u rs_testuser -p testpwd --eval 'rs.status().members.forEach(function(node_data) {print("name: " + node_data.name + ", stateStr: " + node_data.stateStr + ", optimeDate: " + node_data.optimeDate)})' admin
+echo -n "psmdb_config_1: "; docker exec psmdb_${case_number}_config_1 ${mongo_binary} --quiet --authenticationDatabase admin -u rs_testuser -p testpwd --eval 'rs.status().members.forEach(function(node_data) {print("name: " + node_data.name + ", stateStr: " + node_data.stateStr + ", optimeDate: " + node_data.optimeDate)})' admin
 # shards
 for j in $( seq 1 ${shard_count} ); do
-  echo -n "shard${j}: "; docker exec psmdb_${case_number}_shard${j}_1 ${mongo_binary} --quiet --authenticationDatabase admin -u rs_testuser -p testpwd --eval 'rs.status().members.forEach(function(node_data) {print("name: " + node_data.name + ", stateStr: " + node_data.stateStr + ", optimeDate: " + node_data.optimeDate)})' admin
+  echo -n "psmdb_shard${j}_1: "; docker exec psmdb_${case_number}_shard${j}_1 ${mongo_binary} --quiet --authenticationDatabase admin -u rs_testuser -p testpwd --eval 'rs.status().members.forEach(function(node_data) {print("name: " + node_data.name + ", stateStr: " + node_data.stateStr + ", optimeDate: " + node_data.optimeDate)})' admin
 done
 
 # config hosts list for mongos
@@ -245,12 +265,15 @@ sudo cat ${docker_base_dir}/psmdb_${case_number}_mongos_1/mongos.conf
 sudo chown -v 1001:1001 ${docker_base_dir}/psmdb_${case_number}_mongos_1/mongos.conf
 
 # start mongod container for mongos - there is no mongos image
-docker run -d --name psmdb_${case_number}_mongos_1 --network ${net_name} --ip "${net_prefix}.$(( port_counter + 2 ))" -v ${docker_base_dir}/psmdb_${case_number}_mongos_1:/mongodb -p 28017:28017 percona/percona-server-mongodb:${psmdb_version}
+docker run -d --name psmdb_${case_number}_mongos_1 --network ${net_name} --ip "${net_prefix}.$(( port_counter + 2 ))" -v ${docker_base_dir}/psmdb_${case_number}_mongos_1:/mongodb -p ${mongos_port}:28017 percona/percona-server-mongodb:${psmdb_version}
 
 # start mongos process inside mongod container
 docker exec psmdb_${case_number}_mongos_1 mongos -f /mongodb/mongos.conf
 ## wait for initialization
-echo -n "mongos: "; sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_mongos_1/log/mongos.log
+until sudo grep -q "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_mongos_1/log/mongos.log 2>/dev/null; do
+  sleep 1
+done
+echo -n "psmdb_mongos_1: ";sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_mongos_1/log/mongos.log
 
 # create cluster user
 docker exec psmdb_${case_number}_mongos_1 ${mongo_binary} --quiet --port 28017 -u rs_testuser -p testpwd --eval 'db.getSiblingDB("admin").createUser( { user: "testuser", pwd: "testpwd", roles: [ { role: "root", db: "admin" }] })' admin

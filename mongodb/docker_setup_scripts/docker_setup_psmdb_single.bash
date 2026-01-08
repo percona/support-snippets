@@ -1,11 +1,16 @@
 # local psmdb docker multiple standalone
-case_number=CS00TESTE
-replica_count=3
-psmdb_version="8.0.16"
+case_number=CS000TEST
 base_dir="/bigdisk/${case_number}"
 docker_base_dir="${base_dir}/docker"
+
+psmdb_version="7.0.28"
+replica_count=3
+
 net_name="${case_number}-net"
 net_prefix="172.2.0"
+
+port_counter=0
+psmdb_port=29017
 
 # cleanup => errors are expected if the containers are not running or there are other containers using the network
 for i in $( seq 1 ${replica_count} ); do
@@ -64,16 +69,16 @@ sudo chown -vR 1001:1001 ${docker_base_dir}/psmdb_*
 # create docker network
 docker network create ${net_name} --subnet "${net_prefix}.0/24"
 # start container
-psmdb_port=28017
-port_counter=0
 for i in $( seq 1 ${replica_count} ); do
   docker run -d --name psmdb_${case_number}_${i} --network ${net_name} --ip "${net_prefix}.$(( port_counter + 2 ))" -v ${docker_base_dir}/psmdb_${case_number}_${i}:/mongodb -p $(( psmdb_port + port_counter )):27017 percona/percona-server-mongodb:${psmdb_version} --config /mongodb/mongod.conf
   let port_counter++
 done
-
-# wait for initialization, might need to execute more than once until all return results
+# wait for initialization
 for i in $( seq 1 ${replica_count} ); do
-  echo -n "psmdb_${i}: "; sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log
+  until sudo grep -q "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log 2>/dev/null; do
+    sleep 1
+  done
+  echo -n "psmdb_${i}: ";sudo grep "Waiting for connections" ${docker_base_dir}/psmdb_${case_number}_${i}/log/mongod.log
 done
 
 # set and print IPs

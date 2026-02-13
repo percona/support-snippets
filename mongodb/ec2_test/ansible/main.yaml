@@ -4,7 +4,7 @@
 # Install packages and configure the OS
 - name: Install basic packages and configure the OS
   gather_facts: true
-  hosts: all
+  hosts: all:!int_mongo_replica_set
   become: yes
   roles:
   - role: os-setup

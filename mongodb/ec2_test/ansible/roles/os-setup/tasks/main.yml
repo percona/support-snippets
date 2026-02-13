@@ -1,28 +1,40 @@
 ---
-  - name: Install basic OS packages
-    apt:
-      name:
-        - lsb-release
-        - gnupg
-        - wget
-        - strace
-        - sysstat
-        - telnet
-      state: present
-      update_cache: yes
+- name: Install basic OS packages
+  apt:
+    name:
+      - lsb-release
+      - gnupg
+      - wget
+      - strace
+      - sysstat
+      - telnet
+    state: present
+    update_cache: yes
 
-  - name: Download and install Percona Repository Package
-    apt:
-      deb: "https://repo.percona.com/apt/percona-release_latest.{{ ansible_distribution_release }}_all.deb"
+- name: Download and install Percona Repository Package
+  apt:
+    deb: "https://repo.percona.com/apt/percona-release_latest.{{ ansible_distribution_release }}_all.deb"
 
-  - name: Enable Percona Toolkit repository
-    command: "percona-release enable tools release"
-    args:
-      creates: /etc/apt/sources.list.d/percona-release.list
-    notify: update_apt_cache
+- name: Enable Percona Toolkit repository
+  command: "percona-release enable tools release"
+  args:
+    creates: /etc/apt/sources.list.d/percona-release.list
+  notify: update_apt_cache
 
-  - name: Install Percona Toolkit
-    apt:
-      name: percona-toolkit
-      state: present
-    notify: update_apt_cache
+# 👇 THIS IS THE IMPORTANT BIT
+- name: Prevent Percona libdbd-mysql-perl from being installed (Jammy fix)
+  copy:
+    dest: /etc/apt/preferences.d/99-no-percona-libdbd
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      Package: libdbd-mysql-perl
+      Pin: origin "repo.percona.com"
+      Pin-Priority: -1
+  notify: update_apt_cache
+
+- name: Install Percona Toolkit
+  apt:
+    name: percona-toolkit
+    state: present

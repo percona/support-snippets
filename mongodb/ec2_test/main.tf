@@ -8,10 +8,16 @@ resource "aws_security_group" "ec2-interview-sg" {
 
   // Ingress rule allowing all traffic
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "TCP"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    self            = true
   }
 
   // Egress rule allowing all traffic
@@ -71,10 +77,17 @@ ${ip}
 [app]
 ${aws_instance.app-interview-instance.*.public_ip[0]}
 
+[int_mongo_replica_set]
+%{ for ip in aws_instance.mongo-interview-instances.*.private_ip }
+${ip}
+%{ endfor }
+
 [mongo_replica_set]
 %{ for ip in aws_instance.mongo-interview-instances.*.public_ip }
 ${ip}
 %{ endfor }
 EOF
   filename = "${path.module}/inventory.ini"
+
+
 }

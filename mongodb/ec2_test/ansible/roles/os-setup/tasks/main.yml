@@ -21,8 +21,7 @@
     creates: /etc/apt/sources.list.d/percona-release.list
   notify: update_apt_cache
 
-# 👇 THIS IS THE IMPORTANT BIT
-- name: Prevent Percona libdbd-mysql-perl from being installed (Jammy fix)
+- name: Prevent Percona libdbd-mysql-perl from being installed
   copy:
     dest: /etc/apt/preferences.d/99-no-percona-libdbd
     owner: root

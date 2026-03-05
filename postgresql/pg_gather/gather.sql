@@ -2,14 +2,13 @@
 ---- For Revision History : https://github.com/jobinau/pg_gather/releases
 \echo '--**** THIS IS A TSV FORMATED FILE. PLEASE DONT COPY-PASTE OR SAVE USING TEXT EDITORS. Because formatting can be lost and file becomes corrupt  ****--'
 \echo '\\r'
-\set ver 32
+\set ver 33
 \echo '\\set ver ':ver
 --Detect PG versions and type of gathering
 SELECT ( :SERVER_VERSION_NUM > 120000 ) AS pg12, ( :SERVER_VERSION_NUM > 130000 ) AS pg13, ( :SERVER_VERSION_NUM > 140000 ) AS pg14, ( :SERVER_VERSION_NUM >= 160000 ) AS pg16,
  ( :SERVER_VERSION_NUM >= 170000 ) AS pg17, ( :SERVER_VERSION_NUM >= 180000 ) AS pg18, ( current_database() != 'template1' ) as fullgather \gset
 
 \set QUIET on
-SET statement_timeout=180000;
 \t on
 \x off
 \a
@@ -67,13 +66,10 @@ do $$ BEGIN  RAISE '***** FATAL : MINIMUM PSQL VERSION 11 IS EXPECTED : PLEASE V
 \echo '\\.'
 
 BEGIN;
+\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 PREPARE pidevents AS
 SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
-\o /dev/null
-SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
-\o
-\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
-\gexec
+SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g \gexec
 DEALLOCATE pidevents;
 END;
 \echo '\\.'
@@ -108,18 +104,13 @@ FROM pg_database d) TO stdin;
 --Starting fullgather section
 \if :fullgather
 
---Users / Roles, 
-\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,enc_method) FROM stdin;
-COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,left(rolpassword,1) enc_method from pg_authid WHERE rolcanlogin) TO stdout;
-\if :ERROR
-COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,NULL FROM pg_roles WHERE rolcanlogin) TO stdout;
-\endif
-\echo '\\.'
-
 --pg_settings
 \echo COPY pg_get_confs (name,setting,unit,source) FROM stdin;
 COPY ( SELECT name,setting,unit,coalesce(sourcefile,source) FROM pg_settings) TO stdin;
 \echo '\\.'
+
+--Set statement_timeout before running any heavier statements 
+SET statement_timeout=180000;
 
 --pg_file_settings
 \echo COPY pg_get_file_confs (sourcefile,name,setting,applied,error) FROM stdin;
@@ -129,6 +120,14 @@ COPY ( SELECT sourcefile,name,setting,applied,error FROM pg_file_settings) TO st
 --pg_db_role_setting
 \echo COPY pg_get_db_role_confs (db,setrole,config) FROM stdin;
 COPY ( SELECT setdatabase,setrole,setconfig FROM pg_db_role_setting) TO stdin;
+\echo '\\.'
+
+--Users / Roles, 
+\echo COPY pg_get_roles(oid,rolname,rolsuper,rolreplication,rolconnlimit,enc_method) FROM stdin;
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,left(rolpassword,1) enc_method from pg_authid WHERE rolcanlogin) TO stdout;
+\if :ERROR
+COPY (SELECT oid,rolname,rolsuper,rolreplication,rolconnlimit,NULL FROM pg_roles WHERE rolcanlogin) TO stdout;
+\endif
 \echo '\\.'
 
 --Major tables and indexes in current db
@@ -315,13 +314,10 @@ FROM pg_stat_io WHERE backend_type NOT LIKE 's%'
 
 --Active session (again)
 BEGIN;
+\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
 PREPARE pidevents AS
 SELECT pid || E'\t' || COALESCE(wait_event,'\N') FROM pg_stat_get_activity(NULLIF(pg_sleep(0.01)::text,'')::INT) WHERE (state != 'idle' OR state IS NULL) AND pid != pg_backend_pid();
-\o /dev/null
-SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g;
-\o
-\echo COPY pg_pid_wait (pid,wait_event) FROM stdin;
-\gexec
+SELECT 'EXECUTE pidevents;' FROM generate_series(1,1000) g \gexec
 END;
 \echo '\\.'
 

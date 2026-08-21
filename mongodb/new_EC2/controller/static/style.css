@@ -1,0 +1,47 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; color: #222; background: #fafafa; font-size: 16px; }
+header { display: flex; align-items: center; justify-content: space-between; padding: .6em 1em; background: #1f2937; color: #fff; }
+header .title { font-weight: 600; letter-spacing: .02em; }
+header .actions { display: flex; align-items: center; gap: .8em; }
+header button { background: #16a34a; color: #fff; border: 0; padding: .55em 1.1em; border-radius: 6px; font-size: .95em; cursor: pointer; }
+header button:disabled { opacity: .6; cursor: not-allowed; }
+header #timer { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 1.05em; padding: .25em .55em; background: rgba(255,255,255,.08); border-radius: 5px; letter-spacing: .03em; }
+header #timer.yellow { background: rgba(234, 179, 8, .25); color: #fde68a; }
+header #timer.red { background: rgba(239, 68, 68, .3); color: #fecaca; }
+#overrun-banner { position: fixed; top: 48px; left: 0; right: 0; background: #b91c1c; color: #fff; text-align: center; padding: .6em 1em; font-weight: 600; font-size: .95em; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+#overrun-banner[hidden] { display: none; }
+#submit-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+#submit-modal[hidden] { display: none; }
+#submit-modal .card { background: #fff; padding: 2em 2.6em; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); display: flex; flex-direction: column; align-items: center; gap: 1.1em; min-width: 280px; }
+#submit-modal #submit-msg { font-size: 1.05em; color: #1f2937; font-weight: 500; }
+#submit-modal .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #16a34a; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+main { display: grid; grid-template-columns: 38% 62%; height: calc(100vh - 48px); }
+#exercise { overflow-y: auto; padding: 1.2em 1.5em; border-right: 1px solid #e5e7eb; background: #fff; }
+#exercise h1 { margin-top: 0; font-size: 1.4em; }
+#exercise .readme { font-size: 1em; line-height: 1.55; }
+#exercise pre { background: #0f172a; color: #e2e8f0; padding: .8em 1em; border-radius: 6px; overflow-x: auto; font-size: .92em; }
+#exercise code { background: #f1f5f9; padding: .1em .3em; border-radius: 3px; font-size: .95em; }
+#exercise pre code { background: transparent; padding: 0; }
+
+#term { background: #000; display: flex; flex-direction: column; min-height: 0; }
+#tabbar { display: flex; align-items: stretch; background: #1f2937; border-bottom: 1px solid #0f172a; height: 32px; flex: 0 0 auto; }
+#tabs { display: flex; align-items: stretch; overflow-x: auto; flex: 0 1 auto; min-width: 0; }
+#tabs .tab { display: flex; align-items: center; gap: .4em; padding: 0 .9em; color: #cbd5e1; background: #111827; border-right: 1px solid #0f172a; font-size: .92em; cursor: pointer; user-select: none; white-space: nowrap; }
+#tabs .tab.active { background: #000; color: #fff; }
+#tabs .tab:hover { color: #fff; }
+#tabs .tab .close { opacity: .55; padding: 0 .15em; font-size: 1.1em; line-height: 1; }
+#tabs .tab .close:hover { opacity: 1; color: #fca5a5; }
+#newtab-wrap { position: relative; }
+#newtab { background: transparent; color: #cbd5e1; border: 0; border-left: 1px solid #0f172a; padding: 0 .9em; height: 32px; cursor: pointer; font-size: 1.1em; line-height: 1; }
+#newtab:hover { color: #fff; background: #0b1220; }
+#newtab-menu { position: absolute; top: 32px; left: 0; min-width: 140px; background: #111827; border: 1px solid #0f172a; border-top: 0; box-shadow: 0 4px 10px rgba(0,0,0,.4); z-index: 50; }
+#newtab-menu .newtab-item { display: block; width: 100%; text-align: left; background: transparent; color: #cbd5e1; border: 0; padding: .55em .9em; cursor: pointer; font-size: .85em; }
+#newtab-menu .newtab-item:hover { background: #0b1220; color: #fff; }
+#frames { flex: 1 1 auto; min-height: 0; position: relative; }
+#frames iframe { width: 100%; height: 100%; border: 0; display: none; }
+
+/* Block text selection on the instructions side too — keeps the candidate
+   from copying the exercise text. Comment out if you'd rather they copy. */
+#exercise { user-select: none; -webkit-user-select: none; }

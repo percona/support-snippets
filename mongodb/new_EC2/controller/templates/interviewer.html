@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interviewer · Support Engineer Interview</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  body { background: #f3f4f6; }
+  main.review { display: block; height: auto; padding: 1.5em 2em; max-width: 1100px; margin: 0 auto; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .6em; margin-bottom: 1.4em; }
+  .summary .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: .8em 1em; }
+  .summary .card .label { color: #6b7280; font-size: .8em; }
+  .summary .card .value { font-size: 1.4em; font-weight: 600; }
+  .lvl { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: .9em; padding: .9em 1.1em; }
+  .lvl summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .8em; }
+  .lvl summary::-webkit-details-marker { display: none; }
+  .lvl .num { font-weight: 700; color: #475569; min-width: 1.6em; }
+  .lvl .ttl { flex: 1 1 auto; }
+  .lvl .badge { font-size: .75em; padding: .2em .55em; border-radius: 4px; font-weight: 600; letter-spacing: .03em; }
+  .badge.passed { background: #dcfce7; color: #166534; }
+  .badge.failed { background: #fee2e2; color: #991b1b; }
+  .badge.attempt { background: #fef3c7; color: #92400e; }
+  .badge.pending { background: #e5e7eb; color: #4b5563; }
+  .badge.current { background: #dbeafe; color: #1e3a8a; margin-left: .4em; }
+  .meta { font-size: .82em; color: #6b7280; margin-top: .55em; padding-left: 2.3em; }
+  .cmds { margin-top: .8em; }
+  .cmds .session-header { font-size: .78em; color: #64748b; padding: .5em 0 .3em; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .cmds .session { background: #0f172a; color: #e2e8f0; padding: .9em 1em; border-radius: 5px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .82em; line-height: 1.5; max-height: 420px; overflow: auto; margin: 0 0 .4em 0; white-space: pre-wrap; word-break: break-word; }
+  .cmds .empty { color: #94a3b8; font-style: italic; padding-left: 2.3em; font-size: .85em; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">Interviewer · Support Engineer Interview</div>
+  <div class="actions">
+    <button id="reset-btn" type="button"
+            style="background:#b91c1c;color:#fff;border:none;border-radius:4px;padding:.4em .8em;font-size:.85em;cursor:pointer;margin-right:1em">
+      Reset lab
+    </button>
+    <a href="/" style="color:#cbd5e1;text-decoration:none;font-size:.85em">candidate view →</a>
+  </div>
+</header>
+<script>
+  document.getElementById('reset-btn').addEventListener('click', async function () {
+    if (!confirm('Reset the lab for a new candidate?\n\nThis clears all progress, the scoreboard, and the timer, and restarts at question 1. This cannot be undone.')) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Resetting…';
+    try {
+      // /reset can return a spurious 500 even when it succeeds, so reload
+      // the dashboard regardless and let the refreshed state speak.
+      await fetch('/reset', { method: 'POST' });
+    } catch (e) { /* ignore — reload shows the real state */ }
+    // give the controller a moment to tear down + restart question 1
+    setTimeout(function () { window.location.href = '/interviewer/'; }, 1500);
+  });
+</script>
+
+<main class="review">
+  {% set passed_count = rows | selectattr('outcome', 'equalto', 'passed') | list | length %}
+  {% set failed_count = rows | selectattr('outcome', 'equalto', 'failed') | list | length %}
+  <div class="summary">
+    <div class="card"><div class="label">Current question</div><div class="value">{{ current_level }} / {{ max_level }}</div></div>
+    <div class="card"><div class="label">Passed</div><div class="value" style="color:#166534">{{ passed_count }}</div></div>
+    <div class="card"><div class="label">Failed</div><div class="value" style="color:#991b1b">{{ failed_count }}</div></div>
+    {% if started_at %}
+    <div class="card">
+      <div class="label">Time used</div>
+      <div class="value" style="font-size:1.05em">
+        {{ '%.2f'|format(time_used_h) }} h / {{ '%.1f'|format(duration_seconds / 3600) }} h
+        {% if overrun_s > 0 %}<span style="color:#991b1b">(+{{ (overrun_s // 60) }} min over)</span>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% for r in rows %}
+    <details class="lvl">
+      <summary>
+        <span class="num">Q{{ '%02d' % r.level }}</span>
+        <span class="ttl">{{ r.title }}</span>
+        {% if r.outcome == 'passed' %}
+          <span class="badge passed">PASSED</span>
+        {% elif r.outcome == 'failed' %}
+          <span class="badge failed">FAILED</span>
+        {% elif r.outcome == 'attempted' %}
+          <span class="badge attempt">{{ r.attempts }} attempt{% if r.attempts > 1 %}s{% endif %}</span>
+        {% else %}
+          <span class="badge pending">PENDING</span>
+        {% endif %}
+        {% if r.is_current %}<span class="badge current">CURRENT</span>{% endif %}
+      </summary>
+      <div class="meta">
+        {% if r.started %}started {{ r.started }}{% endif %}
+        {% if r.last_attempt %} · last attempt {{ r.last_attempt }}{% endif %}
+        {% if r.passed_at %} · passed {{ r.passed_at }}{% endif %}
+      </div>
+      <div class="cmds">
+        {% if r.sessions %}
+          {% for s in r.sessions %}
+            <div class="session-header">{{ s.node }} · last activity {{ s.mtime }}</div>
+            <pre class="session">{{ s.text }}</pre>
+          {% endfor %}
+        {% else %}
+          <div class="empty">No session recorded yet for this question.</div>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+</main>
+</body>
+</html>

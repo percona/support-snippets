@@ -1,0 +1,12 @@
+[Unit]
+Description=Per-level interview setup (env propagation + setup.sh)
+After=mongod.service
+Wants=mongod.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interview-setup
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

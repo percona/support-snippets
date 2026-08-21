@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Question {{ level }} / {{ max_level }} — {{ title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <div class="title">Support Engineer Interview · Question {{ level }} / {{ max_level }}</div>
+  <div class="actions">
+    <span id="timer" data-started="{{ started_at }}" data-duration="{{ duration_seconds }}">--:--:--</span>
+    <button id="check">Send</button>
+  </div>
+</header>
+
+<div id="overrun-banner" hidden>Time expired — you're now in overrun. Finish what you can.</div>
+
+<div id="submit-modal" hidden>
+  <div class="card">
+    <div class="spinner"></div>
+    <div id="submit-msg">Submitting…</div>
+  </div>
+</div>
+
+<main>
+  <section id="exercise">
+    <h1>{{ title }}</h1>
+    <div class="readme">{{ body|safe }}</div>
+  </section>
+
+  <section id="term">
+    <div id="tabbar">
+      <div id="tabs"></div>
+      <div id="newtab-wrap">
+        <button id="newtab" title="Open a new terminal">+</button>
+        <div id="newtab-menu" hidden></div>
+      </div>
+    </div>
+    <div id="frames"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var stop = function (e) { e.preventDefault(); e.stopImmediatePropagation(); };
+  ['paste', 'copy', 'cut', 'contextmenu', 'drop', 'dragover'].forEach(function (ev) {
+    document.addEventListener(ev, stop, true);
+  });
+})();
+
+(function () {
+  var tabsEl = document.getElementById('tabs');
+  var framesEl = document.getElementById('frames');
+  var nodes = {{ nodes|tojson }};
+  var nodeCounts = {};
+  var counter = 0;
+  var active = null;
+
+  function focusActive() {
+    var frame = document.querySelector('#frames iframe[data-id="' + active + '"]');
+    if (!frame) return;
+    try { frame.focus(); } catch (e) {}
+    try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
+    var tries = 0;
+    (function tryFocusXterm() {
+      try {
+        var doc = frame.contentDocument;
+        if (doc) {
+          var ta = doc.querySelector('.xterm-helper-textarea');
+          if (ta) { ta.focus(); return; }
+          var xt = doc.querySelector('.xterm');
+          if (xt) { xt.click(); return; }
+        }
+      } catch (e) {}
+      if (tries++ < 20) setTimeout(tryFocusXterm, 100);
+    })();
+  }
+
+  function activate(id) {
+    document.querySelectorAll('#tabs .tab').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.id === id);
+    });
+    document.querySelectorAll('#frames iframe').forEach(function (el) {
+      el.style.display = el.dataset.id === id ? 'block' : 'none';
+    });
+    active = id;
+    setTimeout(focusActive, 30);
+  }
+
+  function closeTab(id) {
+    var tab = document.querySelector('#tabs .tab[data-id="' + id + '"]');
+    var frame = document.querySelector('#frames iframe[data-id="' + id + '"]');
+    if (tab) tab.remove();
+    if (frame) frame.remove();
+    if (active === id) {
+      var firstTab = document.querySelector('#tabs .tab');
+      if (firstTab) activate(firstTab.dataset.id);
+      else newTab(nodes[0]);
+    }
+  }
+
+  function newTab(node) {
+    counter += 1;
+    nodeCounts[node] = (nodeCounts[node] || 0) + 1;
+    var id = 't' + counter;
+    var label = nodeCounts[node] > 1 ? (node + ' #' + nodeCounts[node]) : node;
+
+    var tab = document.createElement('div');
+    tab.className = 'tab';
+    tab.dataset.id = id;
+    tab.dataset.node = node;
+    tab.addEventListener('click', function (e) {
+      if (e.target.classList.contains('close')) return;
+      activate(id);
+    });
+    var name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = label;
+    var close = document.createElement('span');
+    close.className = 'close';
+    close.title = 'Close terminal';
+    close.textContent = '×';
+    close.addEventListener('click', function (e) { e.stopPropagation(); closeTab(id); });
+    tab.appendChild(name);
+    tab.appendChild(close);
+    tabsEl.appendChild(tab);
+
+    var frame = document.createElement('iframe');
+    frame.dataset.id = id;
+    frame.dataset.node = node;
+    frame.src = '/term/' + node + '/';
+    frame.setAttribute('allow', "clipboard-read 'none'; clipboard-write 'none'");
+    framesEl.appendChild(frame);
+
+    activate(id);
+  }
+
+  var menu = document.getElementById('newtab-menu');
+  var newtabBtn = document.getElementById('newtab');
+
+  function buildMenu() {
+    menu.innerHTML = '';
+    nodes.forEach(function (n) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'newtab-item';
+      item.textContent = n;
+      item.addEventListener('click', function (e) {
+        e.stopPropagation();
+        hideMenu();
+        newTab(n);
+      });
+      menu.appendChild(item);
+    });
+  }
+  function showMenu() { buildMenu(); menu.hidden = false; }
+  function hideMenu() { menu.hidden = true; }
+
+  newtabBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (menu.hidden) showMenu(); else hideMenu();
+  });
+  document.addEventListener('click', hideMenu);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideMenu(); });
+
+  nodes.forEach(function (n) { newTab(n); });
+})();
+
+(function () {
+  var el = document.getElementById('timer');
+  var banner = document.getElementById('overrun-banner');
+  var started = parseInt(el.dataset.started, 10);
+  var duration = parseInt(el.dataset.duration, 10);
+  var endEpoch = (started + duration) * 1000;
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmt(secs) {
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    var s = secs % 60;
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
+  }
+  function tick() {
+    var diff = Math.floor((endEpoch - Date.now()) / 1000);
+    if (diff > 0) {
+      el.textContent = fmt(diff);
+      el.className = diff < 300 ? 'red' : (diff < 1800 ? 'yellow' : '');
+      banner.hidden = true;
+    } else {
+      el.textContent = '+' + fmt(-diff);
+      el.className = 'red';
+      banner.hidden = false;
+    }
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
+document.getElementById('check').addEventListener('click', async function () {
+  if (!window.confirm('Send your work and move on to the next exercise?\n\nYou will not be able to return to this one.')) return;
+  var btn = this;
+  var modal = document.getElementById('submit-modal');
+  var msg = document.getElementById('submit-msg');
+  btn.disabled = true;
+  msg.textContent = 'Submitting…';
+  modal.hidden = false;
+  try {
+    await fetch('/check', { method: 'POST' });
+  } catch (e) { /* ignore — reload below shows new state */ }
+  msg.textContent = 'Loading next exercise…';
+  setTimeout(function () { location.reload(); }, 2500);
+});
+</script>
+</body>
+</html>

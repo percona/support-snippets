@@ -1,0 +1,170 @@
+================================================================
+  Support Engineer Interview Lab — candidate-facing questions
+  (the ticket text shown in the left panel for each question)
+================================================================
+
+
+----------------------------------------------------------------
+  01-mongod-down
+----------------------------------------------------------------
+
+# Question 1 — mongod is down
+
+The application team is paging — they cannot connect to MongoDB:
+
+```
+MongoNetworkError: connect ECONNREFUSED 127.0.0.1:27017
+```
+
+Two things to do:
+
+1. **Bring mongod back up** so the application can connect again.
+2. The app team also suspects they're nearing a connection limit. Once
+   mongod is up, find **how many client connections are currently open**
+   on this server and write just that number (digits only) to
+   `/home/candidate/answer.txt`.
+
+
+----------------------------------------------------------------
+  02-import-company
+----------------------------------------------------------------
+
+# Question 2 — Load a customer dataset
+
+The application team handed off `/tmp/company.json.tar.gz` and asked you to
+load it into MongoDB as database `percona`, collection `company`.
+
+Load it.
+
+
+----------------------------------------------------------------
+  03-replica-set
+----------------------------------------------------------------
+
+# Question 3 — Build a replica set
+
+The application team needs a 3-member replica set named `interview`
+across `node1`, `node2`, and `node3`: one PRIMARY and two SECONDARY.
+
+- `node1` and `node2` already have mongod, but running as standalone.
+  Configure the replica set there, first.
+- `node3` is a **freshly provisioned host — MongoDB is not installed on
+  it yet.** Install Percona Server for MongoDB (the Percona yum repo is
+  already configured on the box), then bring node3 into the set
+  alongside the others.
+
+Set it up so all three are healthy members of the replica set
+`interview`.
+
+
+----------------------------------------------------------------
+  04-priority-stepup
+----------------------------------------------------------------
+
+# Question 4 — node1 should be PRIMARY again
+
+The replica set `interview` is up across `node1`, `node2`, and `node3`,
+but node2 keeps winning elections. Application code expects node1 to be
+PRIMARY in steady state.
+
+Reconfigure the replica set so that **node1 becomes PRIMARY**. It has to
+stay the preferred member, so node1 wins the next election too, not just
+this one.
+
+
+----------------------------------------------------------------
+  05-oplog-resize
+----------------------------------------------------------------
+
+# Question 5 — Resize node3's oplog
+
+The replica set is healthy, but `node3`'s oplog window is too short
+to safely resync after a multi-hour outage. Capacity planning says
+**5 GB** is the right size for this workload.
+
+Resize node3's oplog to 5 GB (5120 MB). Don't touch node1 or node2.
+
+
+----------------------------------------------------------------
+  06-missing-index
+----------------------------------------------------------------
+
+# Question 6 — Slow query on percona.company
+
+The reporting team complains that this query is slow. It runs on
+`percona.company`, which holds 100,000 documents:
+
+```
+db.getSiblingDB("percona").company.find({
+  industry: "Tech",
+  country: "US",
+  founded: { $gte: 1910 }
+}).sort({ employees: -1 })
+```
+
+`explain("executionStats")` shows a `COLLSCAN` over the whole collection
+and a blocking in-memory `SORT`.
+
+Make the query use an index, so the winning plan has **no COLLSCAN and
+no SORT stage**. Check `executionStats` before and after, the timing
+should drop.
+
+
+----------------------------------------------------------------
+  07-replication-lag
+----------------------------------------------------------------
+
+# Question 7 — node3 is lagging behind primary
+
+`rs.status()` shows `node3` is `SECONDARY` but its optime is hundreds
+of seconds behind the primary's, and the gap keeps growing. Writes
+keep hitting node1 successfully, so the primary itself looks fine.
+
+A backup script ran on node3 last night.
+
+Find why node3 isn't applying its oplog and fix it. Lag should drop
+to ~0 once you do.
+
+
+----------------------------------------------------------------
+  08-bad-config
+----------------------------------------------------------------
+
+# Question 8 — node3's mongod will not start
+
+`node3` is missing from the replica set `interview`. `sudo systemctl
+status mongod` on node3 shows the service is failed and won't start back
+up.
+
+Find the cause and bring node3 back as a healthy SECONDARY. Read the log
+after every attempt, mongod reports one problem at a time.
+
+
+----------------------------------------------------------------
+  09-ftdc-version
+----------------------------------------------------------------
+
+# Question 9 — Read mongod version from a customer FTDC file
+
+A customer escalated a ticket with one FTDC chunk attached. We need
+to confirm which mongod version the customer was running before we
+can match it to a known-issue list.
+
+The file is at `/opt/customer-ftdc/metrics.bson`.
+
+Find the **mongod version string** recorded in that file (e.g.
+`6.0.4-3`) and write it to `/home/candidate/answer.txt`.
+
+
+----------------------------------------------------------------
+  10-restore-backup
+----------------------------------------------------------------
+
+# Question 10 — Restore percona.company from backup
+
+A customer engineer ran `db.getSiblingDB("percona").dropDatabase()` in
+the wrong cluster. The application is down. You have a fresh
+`mongodump` of `percona` on `node1` at `/backups/`.
+
+Restore the `percona` database from `/backups` so the app can serve
+queries again.

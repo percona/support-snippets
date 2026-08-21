@@ -1,0 +1,13 @@
+[Unit]
+Description=ttyd (candidate terminal)
+After=interview-setup.service
+Wants=interview-setup.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sysconfig/interview
+ExecStart=/usr/local/bin/ttyd -p 7681 -i 0.0.0.0 -W -b /term/%H/ -t disableLeaveAlert=true -t titleFixed="Support Engineer Interview" -t fontSize=14 /usr/local/bin/candidate-shell
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

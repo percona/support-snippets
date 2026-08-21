@@ -1,0 +1,43 @@
+name: dba-interview
+
+networks:
+  interview_net:
+    name: interview_net
+    external: true
+
+volumes:
+  history:
+    name: dba-interview-history
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: dba-nginx
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/auth:/etc/nginx/auth:ro
+    depends_on:
+      - controller
+    networks:
+      - interview_net
+
+  controller:
+    build: ./controller
+    container_name: dba-controller
+    restart: unless-stopped
+    environment:
+      MAX_LEVEL: "10"
+      EXERCISE_CONTAINER: "exercise-current"
+      EXERCISE_IMAGE_PREFIX: "interview/exercise-"
+      INTERVIEW_NETWORK: "interview_net"
+      STATE_FILE: "/state/level.txt"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./state:/state
+      - ./exercises:/exercises:ro
+      - history:/state/history:ro
+    networks:
+      - interview_net

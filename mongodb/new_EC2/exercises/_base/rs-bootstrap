@@ -1,0 +1,69 @@
+#!/bin/bash
+# Bring this node into a 3-member replica set (default name: interview).
+#
+# Sync part (blocks interview-setup):
+#   - add replication.replSetName=$RS_NAME to /etc/mongod.conf if absent
+#   - restart mongod
+# Async part (backgrounded; only NODE_INDEX=0 runs it):
+#   - wait for every peer in $NODE_PEERS to answer mongosh ping
+#   - rs.initiate() with the config in $1, or a default 3-member config
+#
+# Logs land in /var/log/rs-bootstrap.log so the candidate doesn't see them.
+set -e
+
+RS_NAME="${RS_NAME:-interview}"
+LOG=/var/log/rs-bootstrap.log
+exec 9>>"$LOG"
+
+if ! grep -q '^replication:' /etc/mongod.conf; then
+    cat >> /etc/mongod.conf <<EOF
+
+replication:
+  replSetName: $RS_NAME
+EOF
+    systemctl restart mongod
+fi
+
+# Wait for our own mongod to answer.
+for _ in $(seq 1 60); do
+    mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' \
+        mongodb://127.0.0.1:27017/admin >/dev/null 2>&1 && break
+    sleep 1
+done
+
+# Only the first node initiates.
+[ "${NODE_INDEX:-0}" = "0" ] || exit 0
+
+CONFIG="${1:-}"
+
+(
+    set -e
+    IFS=',' read -ra PEERS <<<"${NODE_PEERS:-$(hostname)}"
+    for peer in "${PEERS[@]}"; do
+        for _ in $(seq 1 180); do
+            mongosh --quiet --host "$peer" --port 27017 \
+                --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1 && break
+            sleep 1
+        done
+    done
+
+    if [ -z "$CONFIG" ]; then
+        members=""
+        for i in "${!PEERS[@]}"; do
+            members+="{ _id: $i, host: \"${PEERS[$i]}:27017\" },"
+        done
+        CONFIG="{ _id: \"$RS_NAME\", members: [ ${members%,} ] }"
+    fi
+
+    echo "[rs-bootstrap] $(date -u +%FT%TZ) initiating with $CONFIG" >&9
+    mongosh --quiet --eval "rs.initiate($CONFIG)" >&9 2>&1 || \
+        echo "[rs-bootstrap] initiate failed (probably already initiated)" >&9
+
+    # Wait for ourselves to become PRIMARY so post-init scripts can rely on it.
+    for _ in $(seq 1 120); do
+        state=$(mongosh --quiet --eval 'rs.status().myState' 2>/dev/null || true)
+        [ "$state" = "1" ] && break
+        sleep 1
+    done
+    echo "[rs-bootstrap] $(date -u +%FT%TZ) primary ready" >&9
+) &

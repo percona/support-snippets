@@ -1,0 +1,5 @@
+flask==3.0.3
+gunicorn==22.0.0
+docker==7.1.0
+markdown==3.7
+pyte==0.8.2

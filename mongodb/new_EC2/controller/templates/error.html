@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8"><title>Error</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+<header><div class="title">Support Engineer Interview · Error</div></header>
+<main style="display:block;padding:3em;">
+  <h1>Something went wrong</h1>
+  <pre style="background:#222;color:#eee;padding:1em;border-radius:6px;">{{ message }}</pre>
+  <p>Notify the interviewer.</p>
+</main>
+</body></html>

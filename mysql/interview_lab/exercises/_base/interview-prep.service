@@ -1,0 +1,12 @@
+[Unit]
+Description=Per-node interview prep (env propagation + server_id)
+Before=mysqld.service
+After=systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interview-prep
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

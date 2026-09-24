@@ -1,0 +1,13 @@
+[Unit]
+Description=Web application service
+After=mysqld.service
+Wants=mysqld.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/webapp
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

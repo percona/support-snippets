@@ -1,0 +1,11 @@
+{
+  "name": "interview-lab-browser-test",
+  "private": true,
+  "description": "Drives headless Chromium through the candidate flow of a deployed lab. Run it through ../browser-test.sh.",
+  "scripts": {
+    "test": "node browser-test.js"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

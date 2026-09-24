@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interviewer · MySQL Support Engineer Interview</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  body { background: #f3f4f6; }
+  main.review { display: block; height: auto; padding: 1.5em 2em; max-width: 1100px; margin: 0 auto; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .6em; margin-bottom: 1.4em; }
+  .summary .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: .8em 1em; }
+  .summary .card .label { color: #6b7280; font-size: .8em; }
+  .summary .card .value { font-size: 1.4em; font-weight: 600; }
+  .lvl { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: .9em; padding: .9em 1.1em; }
+  .lvl summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .8em; }
+  .lvl summary::-webkit-details-marker { display: none; }
+  .lvl .num { font-weight: 700; color: #475569; min-width: 1.6em; }
+  .lvl .ttl { flex: 1 1 auto; }
+  .lvl .badge { font-size: .75em; padding: .2em .55em; border-radius: 4px; font-weight: 600; letter-spacing: .03em; }
+  .badge.passed { background: #dcfce7; color: #166534; }
+  .badge.failed { background: #fee2e2; color: #991b1b; }
+  .badge.attempt { background: #fef3c7; color: #92400e; }
+  .badge.pending { background: #e5e7eb; color: #4b5563; }
+  .badge.current { background: #dbeafe; color: #1e3a8a; margin-left: .4em; }
+  /* human-graded questions: the grader's pass means "something was submitted", not "correct" */
+  .badge.review { background: #ede9fe; color: #5b21b6; }
+  .summary .card[hidden] { display: none; }
+  .checkout { margin: .7em 0 0 2.3em; }
+  .checkout[hidden] { display: none; }
+  .checkout .artifact-body { border-left-color: #64748b; }
+
+  /* live terminal */
+  .live { margin: 1em 0 1.4em; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; overflow: hidden; }
+  .live-head { display: flex; align-items: center; gap: .6em; padding: .55em .9em;
+               border-bottom: 1px solid #e5e7eb; background: #f9fafb; font-size: .85em; }
+  .live-title { font-weight: 600; }
+  .live-dot { width: .6em; height: .6em; border-radius: 50%; background: #9ca3af; flex: none; }
+  .live-dot.on    { background: #16a34a; animation: livepulse 1.6s ease-in-out infinite; }
+  .live-dot.idle  { background: #d1d5db; }
+  .live-dot.error { background: #dc2626; }
+  @keyframes livepulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  .live-tabs { display: flex; gap: .35em; }
+  .live-tab { cursor: pointer; padding: .15em .6em; border-radius: 4px; border: 1px solid #e5e7eb;
+              background: #fff; color: #4b5563; font-size: .9em; font-family: inherit; }
+  .live-tab.sel { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+  .live-tab .tick { color: #16a34a; font-weight: 700; }
+  .live-tab.sel .tick { color: #86efac; }
+  .live-status { margin-left: auto; color: #6b7280; font-variant-numeric: tabular-nums; }
+  .live-files { border-top: 1px solid #e5e7eb; background: #fffbeb; padding: .5em .9em; font-size: .8em; }
+  .live-files .fhead { font-weight: 600; color: #92400e; margin-bottom: .3em; }
+  .live-files .frow { display: flex; gap: .6em; align-items: baseline; padding: .12em 0; color: #4b5563;
+                      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .live-files .fname { font-weight: 600; color: #1f2937; }
+  .live-files .ftag { padding: 0 .4em; border-radius: 3px; font-size: .9em; }
+  .live-files .ftag.external { background: #fee2e2; color: #991b1b; font-weight: 700; }
+  .live-files .ftag.typed { background: #dcfce7; color: #166534; }
+  .live-files .ftag.mixed { background: #fef3c7; color: #92400e; }
+  .live-alerts { border-top: 1px solid #fecaca; background: #fef2f2; padding: .5em .9em; font-size: .8em; }
+  .live-alerts .ahead { font-weight: 700; color: #991b1b; margin-bottom: .3em; }
+  .live-alerts .arow { display: flex; gap: .6em; padding: .12em 0; color: #7f1d1d;
+                       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .live-alerts .akind { font-weight: 700; text-transform: uppercase; }
+  .live-alerts .acav { color: #9a3412; font-style: italic; margin-top: .35em; font-family: inherit; }
+  .lvl .badge.flag { background: #fee2e2; color: #991b1b; margin-left: .4em; }
+  .live-ack { border-top: 1px solid #e5e7eb; background: #f8fafc; padding: .45em .9em;
+              font-size: .78em; color: #4b5563; }
+  .live-ack .ok { color: #166534; font-weight: 600; }
+  .live-ack .none { color: #991b1b; font-weight: 600; }
+  .live-body { margin: 0; padding: .9em 1em; background: #0f172a; color: #e2e8f0;
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem;
+               line-height: 1.35; white-space: pre; overflow-x: auto; min-height: 22em;
+               max-height: 34em; overflow-y: auto; }
+  .meta { font-size: .82em; color: #6b7280; margin-top: .55em; padding-left: 2.3em; }
+  .cmds { margin-top: .8em; }
+  .artifact { margin: .7em 0 0 2.3em; }
+  .artifact-label { font-size: .78em; color: #64748b; font-weight: 600; padding-bottom: .3em; }
+  .artifact-body { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #2563eb; color: #0f172a; padding: .8em 1em; border-radius: 5px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .82em; line-height: 1.55; max-height: 420px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .cmds .session-header { font-size: .78em; color: #64748b; padding: .5em 0 .3em; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .cmds .session { background: #0f172a; color: #e2e8f0; padding: .9em 1em; border-radius: 5px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .82em; line-height: 1.5; max-height: 420px; overflow: auto; margin: 0 0 .4em 0; white-space: pre-wrap; word-break: break-word; }
+  .flagged { margin: .6em 0 0 2.3em; font-size: .84em; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 5px; padding: .5em .7em; }
+  .flagged .caveat { display: block; color: #a16207; font-weight: 400; font-style: italic; margin-top: .25em; }
+  .cmds .empty { color: #94a3b8; font-style: italic; padding-left: 2.3em; font-size: .85em; }
+  /* per-question editor saves, in the live panel's dress */
+  .lvl .live-files { margin: .7em 0 0 2.3em; border: 1px solid #fde68a; border-radius: 5px; }
+  .lvl .live-files .fcontent { margin: .1em 0 .5em; }
+  .lvl .live-files .fcontent summary { display: block; cursor: pointer; color: #92400e; font-size: .9em; }
+  .lvl .live-files .fcontent .artifact-body { margin-top: .3em; border-left-color: #f59e0b; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">Interviewer · MySQL Support Engineer Interview</div>
+  <div class="actions">
+    <button id="reset-btn" type="button"
+            style="background:#b91c1c;color:#fff;border:none;border-radius:4px;padding:.4em .8em;font-size:.85em;cursor:pointer;margin-right:1em">
+      Reset lab
+    </button>
+    <a href="/" style="color:#cbd5e1;text-decoration:none;font-size:.85em">candidate view →</a>
+  </div>
+</header>
+<script>
+  document.getElementById('reset-btn').addEventListener('click', async function () {
+    if (!confirm('Reset the lab for a new candidate?\n\nThis run’s scoreboard, timer, file saves and acknowledgement are archived under state/archive/<run_id>/, not deleted, and the transcripts are untouched. The containers stop and the candidate page returns to the briefing; question 1 starts when the next candidate presses Start.')) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Resetting…';
+    try {
+      // /reset can return a spurious 500 even when it succeeds, so reload
+      // the dashboard regardless and let the refreshed state speak.
+      await fetch('/reset', { method: 'POST' });
+    } catch (e) { /* ignore — reload shows the real state */ }
+    // give the controller a moment to tear down + restart question 1
+    setTimeout(function () { window.location.href = '/interviewer/'; }, 1500);
+  });
+</script>
+
+<main class="review">
+  <section id="session-lock" class="lvl" hidden role="alert" style="border-color:#dc2626;background:#fef2f2">
+    <strong>SESSION LOCKED</strong> · <span id="lock-at"></span> · <span id="lock-reason"></span>
+    <button id="unlock-btn" type="button">Unlock</button>
+  </section>
+  {# Human-graded questions are counted apart: for those the grader's pass/fail
+     only says whether something was submitted, and folding them into "Passed"
+     would overstate the result. `human_graded` and `check_output` are optional
+     on a row; a missing attribute is falsy here. #}
+  {% set graded_rows = rows | rejectattr('human_graded') | list %}
+  {% set passed_count = graded_rows | selectattr('outcome', 'equalto', 'passed') | list | length %}
+  {% set failed_count = graded_rows | selectattr('outcome', 'equalto', 'failed') | list | length %}
+  {% set review_count = rows | selectattr('human_graded') | selectattr('outcome', 'in', ['passed', 'failed']) | list | length %}
+  <div class="summary">
+    <div class="card"><div class="label">Current question</div><div class="value" id="stat-current">{{ current_level }} / {{ max_level }}</div></div>
+    <div class="card"><div class="label">Passed</div><div class="value" id="stat-passed" style="color:#166534">{{ passed_count }}</div></div>
+    <div class="card"><div class="label">Failed</div><div class="value" id="stat-failed" style="color:#991b1b">{{ failed_count }}</div></div>
+    <div class="card" id="stat-review-card"{% if not review_count %} hidden{% endif %}><div class="label">Needs human review</div><div class="value" id="stat-review" style="color:#5b21b6">{{ review_count }}</div></div>
+    <div class="card">
+      <div class="label">Time used</div>
+      <div class="value" id="stat-time" style="font-size:1.05em">
+        {%- if started_at -%}
+        {{ '%.2f'|format(time_used_h) }} h / {{ '%.1f'|format(duration_seconds / 3600) }} h
+        {%- if overrun_s > 0 %} <span style="color:#991b1b">(+{{ (overrun_s // 60) }} min over)</span>{% endif -%}
+        {%- else -%}
+        <span style="color:#6b7280">not started</span>
+        {%- endif -%}
+      </div>
+    </div>
+  </div>
+
+  <section class="live" id="live">
+    <div class="live-head">
+      <span class="live-dot" id="live-dot"></span>
+      <span class="live-title">Live terminal</span>
+      <span class="live-tabs" id="live-tabs"></span>
+      <span class="live-status" id="live-status">connecting&hellip;</span>
+    </div>
+    <pre class="live-body" id="live-body">Waiting for the candidate's terminal&hellip;</pre>
+    <div class="live-alerts" id="live-alerts" hidden></div>
+    <div class="live-files" id="live-files" hidden></div>
+    <div class="live-ack" id="live-ack" hidden></div>
+  </section>
+
+  {% for r in rows %}
+    <details class="lvl" data-level="{{ r.level }}"{% if r.human_graded %} data-human-graded="1"{% endif %}>
+      <summary>
+        <span class="num">Q{{ '%02d' % r.level }}</span>
+        <span class="ttl">{{ r.title }}</span>
+        {% if r.human_graded and r.outcome in ('passed', 'failed') %}
+          <span class="badge outcome review" title="Scored by a person, not the grader">SUBMITTED &mdash; NEEDS REVIEW</span>
+        {% elif r.outcome == 'passed' %}
+          <span class="badge outcome passed">PASSED</span>
+        {% elif r.outcome == 'failed' %}
+          <span class="badge outcome failed">FAILED</span>
+        {% elif r.outcome == 'attempted' %}
+          <span class="badge outcome attempt">{{ r.attempts }} attempt{% if r.attempts > 1 %}s{% endif %}</span>
+        {% else %}
+          <span class="badge outcome pending">PENDING</span>
+        {% endif %}
+        {% if r.is_current %}<span class="badge current">CURRENT</span>{% endif %}
+      </summary>
+      <div class="meta">
+        {% if r.started %}started {{ r.started }}{% endif %}
+        {% if r.last_attempt %} · last attempt {{ r.last_attempt }}{% endif %}
+        {% if r.passed_at %} · passed {{ r.passed_at }}{% endif %}
+      </div>
+      {# The grader's own diagnostic: tells "did nothing" from "index built with
+         the wrong column order". Program output, so it is escaped. #}
+      <div class="checkout"{% if not r.check_output %} hidden{% endif %}>
+        <div class="artifact-label">Grader output</div>
+        <pre class="artifact-body check-output">{{ r.check_output or '' }}</pre>
+      </div>
+      {% if r.inputs %}
+      <div class="flagged">
+        {% set bursts = r.inputs.events | selectattr('kind', 'equalto', 'burst') | list %}
+        {% set autos  = r.inputs.events | selectattr('kind', 'equalto', 'automation') | list %}
+        {% set rejects = r.inputs.events | selectattr('kind', 'equalto', 'rejected') | list %}
+        {% if rejects %}
+          Rejected <b>{{ rejects | length }}</b> input{% if rejects | length > 1 %}s{% endif %}
+          no hand produces, and the candidate was shown the notice to AI agents
+          ({{ rejects | map(attribute='detail') | join('; ') }}).
+        {% endif %}
+        {% if bursts %}
+          Noted <b>{{ bursts | length }}</b> burst{% if bursts | length > 1 %}s{% endif %}
+          of input faster than typing
+          ({{ bursts | map(attribute='detail') | join('; ') }}). Nothing was blocked.
+        {% endif %}
+        {% if autos %}
+          Automation signals at page load: <b>{{ autos | map(attribute='detail') | join('; ') }}</b>.
+        {% endif %}
+        {% if bursts or autos or rejects %}
+        <span class="caveat">Neither proves anything alone — a Bluetooth keyboard flushing its
+        buffer, a stalled tab or dictation software produce the same cadence; automation
+        flags are trivially spoofed; and only browser keystrokes are measured, so an agent
+        writing straight into the terminal is not seen at all. Read the transcript.</span>
+        {% endif %}
+        {# A node's container died and the controller brought it back. Not a
+           candidate signal — but it means that node restarted from the
+           question's initial state, which the transcript alone will not say. #}
+        {% set respawns = r.inputs.events | selectattr('kind', 'equalto', 'respawn') | list %}
+        {% for e in respawns %}
+          <div>Lab event {{ e.at }}: {{ e.detail }}.</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if r.artifacts %}
+        {% for a in r.artifacts %}
+        <div class="artifact">
+          <div class="artifact-label">{{ a.label }} &mdash; {{ a.name }}</div>
+          <pre class="artifact-body">{{ a.text }}</pre>
+        </div>
+        {% endfor %}
+      {% endif %}
+      {# Editor saves for this question, in the live panel's dress: newest
+         first, same PASTED FROM OUTSIDE tag. Optional on a row, so the page
+         renders as before until the backend supplies it. #}
+      {% if r.files %}
+      <div class="live-files">
+        <div class="fhead">File saves</div>
+        {% for f in r.files | reverse %}
+        <div class="frow">
+          <span>{{ (f.at or '') | replace('T', ' ') | replace('Z', '') }}</span>
+          <span class="fname">{{ f.node }}:{{ f.name }}</span>
+          <span>{{ f.bytes }}b</span>
+          {% if f.external %}<span class="ftag external">PASTED FROM OUTSIDE</span>
+          {% elif f.pasted %}<span class="ftag mixed">pasted {{ f.pasted }}b in-session</span>
+          {% else %}<span class="ftag typed">typed</span>{% endif %}
+          <span>{% if f.edit_seconds %}{{ f.edit_seconds }}s editing{% endif %}</span>
+        </div>
+        {% if f.content %}
+        <details class="fcontent"><summary>saved content</summary><pre class="artifact-body">{{ f.content }}</pre></details>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="cmds">
+        {% if r.sessions %}
+          {% for s in r.sessions %}
+            <div class="session-header">
+              {{ s.node }} · last activity {{ s.mtime }}
+              {% if s.timing %}
+                · typing: {{ s.timing.elapsed_s }}s span,
+                {{ s.timing.idle_s }}s idle across
+                {{ s.timing.gap_count }} gap{% if s.timing.gap_count != 1 %}s{% endif %} &gt;60s,
+                longest {{ s.timing.longest_gap_s }}s
+              {% endif %}
+            </div>
+            <pre class="session">{{ s.text }}</pre>
+          {% endfor %}
+        {% else %}
+          <div class="empty">No session recorded yet for this question.</div>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+</main>
+
+<script>
+// Live dashboard. Polls once a second and repaints in place — there is no
+// refresh button and none is wanted: an interviewer watching a candidate
+// should never have to remember to reload.
+(function () {
+  var POLL_MS = 1000;
+  var body   = document.getElementById('live-body');
+  var tabsEl = document.getElementById('live-tabs');
+  var status = document.getElementById('live-status');
+  var dot    = document.getElementById('live-dot');
+  if (!body) return;
+
+  var pinned = null;      // node the user clicked; null = follow whoever is active
+  var nodes  = [];
+  var fails  = 0;
+  var lastText = null;
+
+  function paint() {
+    if (!nodes.length) {
+      body.textContent = "Waiting for the candidate's terminal…";
+      tabsEl.innerHTML = '';
+      return;
+    }
+    var sel = null;
+    if (pinned) { sel = nodes.find(function (n) { return n.node === pinned; }); }
+    if (!sel) { sel = nodes[0]; }   // nodes arrive most-recently-active first
+
+    tabsEl.innerHTML = '';
+    nodes.forEach(function (n) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'live-tab' + (n.node === sel.node ? ' sel' : '');
+      // a tick marks the node that is actually being typed on right now
+      b.innerHTML = (n.ago !== null && n.ago < 10 ? '<span class="tick">•</span> ' : '') + n.node;
+      b.title = n.ago === null ? 'no activity yet' : 'last activity ' + n.ago + 's ago';
+      b.onclick = function () { pinned = (pinned === n.node) ? null : n.node; paint(); };
+      tabsEl.appendChild(b);
+    });
+
+    // Only touch the DOM when the text actually changed, so the pane does not
+    // fight the user's scrollbar every second.
+    if (sel.text !== lastText) {
+      var stick = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+      body.textContent = sel.text || '(no output yet)';
+      lastText = sel.text;
+      if (stick) { body.scrollTop = body.scrollHeight; }
+    }
+
+    var ago = sel.ago;
+    if (ago === null)     { dot.className = 'live-dot idle'; status.textContent = sel.node + ' · idle'; }
+    else if (ago < 5)     { dot.className = 'live-dot on';   status.textContent = sel.node + ' · typing now'; }
+    else if (ago < 120)   { dot.className = 'live-dot on';   status.textContent = sel.node + ' · ' + ago + 's ago'; }
+    else                  { dot.className = 'live-dot idle';
+                            status.textContent = sel.node + ' · idle ' + Math.floor(ago / 60) + 'm'; }
+  }
+
+  // Saves made through the in-page editor. The editor is the only place a
+  // candidate can paste, so "how did this text arrive" is knowable here in a
+  // way it never is for the terminal.
+  function paintFiles(saves) {
+    var box = document.getElementById('live-files');
+    if (!box) return;
+    if (!saves.length) { box.hidden = true; return; }
+    box.hidden = false;
+    var h = '<div class="fhead">File saves this question</div>';
+    saves.slice().reverse().forEach(function (f) {
+      var tag, label;
+      if (f.external)      { tag = 'external'; label = 'PASTED FROM OUTSIDE'; }
+      else if (f.pasted)   { tag = 'mixed';    label = 'pasted ' + f.pasted + 'b in-session'; }
+      else                 { tag = 'typed';    label = 'typed'; }
+      h += '<div class="frow">' +
+           '<span>' + (f.at || '').replace('T', ' ').replace('Z', '') + '</span>' +
+           '<span class="fname">' + f.node + ':' + f.name + '</span>' +
+           '<span>' + f.bytes + 'b</span>' +
+           '<span class="ftag ' + tag + '">' + label + '</span>' +
+           '<span>' + (f.edit_seconds ? f.edit_seconds + 's editing' : '') + '</span>' +
+           '</div>';
+    });
+    box.innerHTML = h;
+  }
+
+  // What the candidate actually agreed to, and when. Recorded at Start, so a
+  // flag raised later can be weighed against an explicit acknowledgement.
+  function paintAck(a) {
+    var box = document.getElementById('live-ack');
+    if (!box) return;
+    box.hidden = false;
+    if (a && a.at) {
+      box.innerHTML = '<span class="ok">\u2713 Rules acknowledged</span> at ' +
+                      a.at.replace('T', ' ').replace('Z', '') +
+                      ' \u2014 \u201c' + a.text + '\u201d';
+    } else {
+      box.innerHTML = '<span class="none">Not started</span> \u2014 the candidate ' +
+                      'has not pressed Start, so no clock is running.';
+    }
+  }
+
+  // Input flags for the question in progress. Recorded since the guard was
+  // built, but they only reached the page on a reload — and the dashboard
+  // stopped reloading when it went live. Now they arrive within a second.
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function paintAlerts(events) {
+    var box = document.getElementById('live-alerts');
+    if (!box) return;
+    if (!events.length) { box.hidden = true; return; }
+    box.hidden = false;
+    var h = '<div class="ahead">\u26a0 Input noted on this question (' + events.length + ')</div>';
+    events.slice().reverse().forEach(function (e) {
+      h += '<div class="arow">' +
+           '<span>' + esc((e.at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+           '<span class="akind">' + esc(e.kind) + '</span>' +
+           '<span>' + esc(e.detail) + '</span></div>';
+    });
+    h += '<div class="acav">This signal may also come from dictation or buffered input. ' +
+         'Discuss it with the candidate before unlocking.</div>';
+    box.innerHTML = h;
+  }
+
+  function paintLock(lock) {
+    var box = document.getElementById('session-lock');
+    box.hidden = !lock || !lock.at;
+    if (box.hidden) return;
+    document.getElementById('lock-at').textContent = lock.at + ' (Q' + lock.level + ')';
+    document.getElementById('lock-reason').textContent = lock.reason || 'rejected input';
+  }
+
+  document.getElementById('unlock-btn').onclick = function () {
+    if (!confirm('Unlock this candidate session after discussing the rejection?')) return;
+    var btn = this;
+    btn.disabled = true;
+    fetch('/unlock', { method: 'POST' }).then(function (r) {
+      if (!r.ok) throw new Error('unlock failed');
+      return r.json();
+    }).then(function () { paintLock({}); })
+      .catch(function () { alert('Unlock failed. Try again.'); })
+      .finally(function () { btn.disabled = false; });
+  };
+
+  // "Time used" was a server-rendered card that never moved and did not exist
+  // at all if the dashboard was opened before the candidate pressed Start.
+  function paintTime(d) {
+    var el = document.getElementById('stat-time');
+    if (!el || typeof d.time_used_h !== 'number') return;
+    // Before Start there is no clock. The server does not say so directly;
+    // the acknowledgement record (written by Start) and a non-zero clock do.
+    var started = !!(d.started_at || (d.ack && d.ack.at) || d.time_used_h > 0);
+    if (!started) {
+      if (el.textContent.trim() !== 'not started') el.textContent = 'not started';
+      return;
+    }
+    var dur = (typeof d.duration_h === 'number') ? d.duration_h.toFixed(1) : '?';
+    var txt = d.time_used_h.toFixed(2) + ' h / ' + dur + ' h';
+    var over = (d.overrun_s > 0) ? ' (+' + Math.floor(d.overrun_s / 60) + ' min over)' : '';
+    if (el.textContent.replace(/\s+/g, ' ').trim() === (txt + over).trim()) return;
+    el.textContent = txt;
+    if (over) {
+      var sp = document.createElement('span');
+      sp.style.color = '#991b1b';
+      sp.textContent = over;
+      el.appendChild(sp);
+    }
+  }
+
+  // Is this a human-graded question? Prefer the poll; fall back to what the
+  // server rendered so an older payload without the field cannot flip a
+  // NEEDS REVIEW badge back to a green PASSED.
+  function humanGraded(lv, row) {
+    if (typeof lv.human_graded !== 'undefined') return !!lv.human_graded;
+    return row.dataset.humanGraded === '1';
+  }
+
+  function applyStats(d) {
+    var levels = d.levels || [];
+    var c = document.getElementById('stat-current');
+    var p = document.getElementById('stat-passed');
+    var f = document.getElementById('stat-failed');
+    var rv = document.getElementById('stat-review');
+    var rvCard = document.getElementById('stat-review-card');
+    if (c) c.textContent = d.current + ' / ' + d.max_level;
+
+    // Count here rather than trusting d.passed: the server's count folds
+    // human-graded questions into "passed", which is the overstatement the
+    // separate badge exists to avoid.
+    var passed = 0, failed = 0, review = 0;
+    levels.forEach(function (lv) {
+      var row = document.querySelector('.lvl[data-level="' + lv.level + '"]');
+      var hg = row ? humanGraded(lv, row) : !!lv.human_graded;
+      if (hg && (lv.outcome === 'passed' || lv.outcome === 'failed')) review++;
+      else if (lv.outcome === 'passed') passed++;
+      else if (lv.outcome === 'failed') failed++;
+    });
+    if (p) p.textContent = levels.length ? passed : d.passed;
+    if (f) f.textContent = levels.length ? failed : d.failed;
+    if (rv) rv.textContent = review;
+    if (rvCard) rvCard.hidden = !review;
+    paintTime(d);
+
+    levels.forEach(function (lv) {
+      var row = document.querySelector('.lvl[data-level="' + lv.level + '"]');
+      if (!row) return;
+      var badge = row.querySelector('.badge.outcome');
+      if (badge) {
+        var cls, txt;
+        if (humanGraded(lv, row) && (lv.outcome === 'passed' || lv.outcome === 'failed')) {
+          cls = 'badge outcome review'; txt = 'SUBMITTED \u2014 NEEDS REVIEW';
+        } else if (lv.outcome === 'passed')    { cls = 'badge outcome passed';  txt = 'PASSED'; }
+        else if (lv.outcome === 'failed')      { cls = 'badge outcome failed';  txt = 'FAILED'; }
+        else if (lv.outcome === 'attempted')   { cls = 'badge outcome attempt';
+                                                 txt = lv.attempts + ' attempt' + (lv.attempts > 1 ? 's' : ''); }
+        else                                   { cls = 'badge outcome pending'; txt = 'PENDING'; }
+        if (badge.textContent.trim() !== txt) { badge.className = cls; badge.textContent = txt; }
+      }
+      // Grader diagnostics. Program output, so textContent, never innerHTML.
+      // Only touched when the poll carries the field, so a payload without it
+      // cannot blank what the server rendered.
+      if (typeof lv.check_output !== 'undefined') {
+        var co = row.querySelector('.checkout');
+        var pre = co ? co.querySelector('.check-output') : null;
+        if (co && pre) {
+          var text = (lv.check_output === null) ? '' : String(lv.check_output);
+          if (pre.textContent !== text) pre.textContent = text;
+          co.hidden = !text;
+        }
+      }
+      var fl = row.querySelector('.badge.flag');
+      if (lv.flags && !fl) {
+        var fb = document.createElement('span');
+        fb.className = 'badge flag';
+        fb.textContent = '\u26a0 ' + lv.flags;
+        fb.title = lv.flags + ' flag(s) on this question (input or lab events)';
+        row.querySelector('summary').appendChild(fb);
+      } else if (lv.flags && fl) {
+        fl.textContent = '\u26a0 ' + lv.flags;
+      } else if (!lv.flags && fl) { fl.remove(); }
+
+      var cur = row.querySelector('.badge.current');
+      if (lv.is_current && !cur) {
+        var sp = document.createElement('span');
+        sp.className = 'badge current'; sp.textContent = 'CURRENT';
+        row.querySelector('summary').appendChild(sp);
+      } else if (!lv.is_current && cur) { cur.remove(); }
+    });
+  }
+
+  function tick() {
+    return fetch('/interviewer/live', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        fails = 0;
+        nodes = d.nodes || [];
+        applyStats(d);
+        paintFiles(d.files || []);
+        paintAck(d.ack || {});
+        paintAlerts(d.inputs || []);
+        paintLock(d.input_lock || {});
+        paint();
+      })
+      .catch(function () {
+        // Never give up — a dropped poll during an interview must recover on
+        // its own, so we keep retrying at the same cadence and just say so.
+        fails++;
+        if (fails > 2) {
+          dot.className = 'live-dot error';
+          status.textContent = 'reconnecting…';
+        }
+      });
+  }
+
+  // Chained, not setInterval: a poll that takes longer than the interval would
+  // otherwise overlap with the next one, and enough overlapping polls park every
+  // gunicorn thread so the candidate's own Send queues behind the dashboard.
+  function loop() { tick().finally(function () { setTimeout(loop, POLL_MS); }); }
+  loop();
+})();
+</script>
+</body>
+</html>

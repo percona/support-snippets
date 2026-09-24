@@ -1,0 +1,98 @@
+name: mysql-interview
+
+networks:
+  # Where the exercise containers live. The controller creates it (and keeps
+  # it) internal, so nothing on it has a route to the internet. nginx joins it
+  # only to proxy the candidate's terminal through to ttyd.
+  mysql_interview_net:
+    name: mysql_interview_net
+    external: true
+  # nginx <-> controller, and nothing else. The controller drives exercise
+  # containers through the Docker socket, never over HTTP, so it has no reason
+  # to sit on the candidate-reachable network — and every reason not to: from
+  # an exercise shell a candidate could otherwise curl it directly, read the
+  # pass/fail view or POST /reset, with none of nginx's auth in the way.
+  mysql_interview_ctl:
+    name: mysql_interview_ctl
+
+volumes:
+  history:
+    name: mysql-interview-history
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: mysql-nginx
+    restart: unless-stopped
+    # If the host runs out of memory, the kernel should take an exercise's
+    # mysqld, not the proxy or the controller the whole interview runs on.
+    oom_score_adj: -900
+    ports:
+      - "${HOST_PORT:-8081}:80"
+    environment:
+      # Stamped on every request nginx forwards to the controller, which
+      # answers 403 to anything without it. Override in .env; keep it to
+      # letters, digits, '-' and '_' because it is written into nginx config
+      # syntax below without escaping.
+      CONTROLLER_SECRET: "${CONTROLLER_SECRET:-interview-lab-local-only}"
+    # nginx cannot read environment variables from its own config, so the
+    # secret is rendered into a one-line include (a single `set`) that
+    # nginx.conf pulls in, and nginx starts only after that file exists.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf 'set $$controller_key "%s";\n' "$$CONTROLLER_SECRET" > /etc/nginx/controller-secret.conf
+        exec nginx -g 'daemon off;'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/auth:/etc/nginx/auth:ro
+    # Healthy, not merely started: the controller makes the exercise network
+    # internal as it boots, and nginx must attach to it only after that. Docker
+    # binds published ports to a container's first non-internal endpoint, so if
+    # nginx attached while the network was still a plain bridge, 8081 could
+    # end up bound there instead of on the controller network.
+    depends_on:
+      controller:
+        condition: service_healthy
+    networks:
+      - mysql_interview_net
+      - mysql_interview_ctl
+
+  controller:
+    build: ./controller
+    container_name: mysql-controller
+    restart: unless-stopped
+    # See nginx above.
+    oom_score_adj: -900
+    environment:
+      MAX_LEVEL: "11"
+      EXERCISE_CONTAINER: "mysql-exercise-current"
+      EXERCISE_PREWARM: "mysql-exercise-prewarm"
+      EXERCISE_IMAGE_PREFIX: "mysqlinterview/exercise-"
+      INTERVIEW_NETWORK: "mysql_interview_net"
+      INTERVIEW_PREWARM_NETWORK: "mysql_interview_prewarm_net"
+      HISTORY_VOLUME: "mysql-interview-history"
+      EXERCISE_MEM_LIMIT: "1g"
+      # 11 questions, one of which requires writing prose.
+      DURATION_SECONDS: "12600"   # 3.5 hours
+      STATE_FILE: "/state/level.txt"
+      # Must be the same value nginx renders above.
+      CONTROLLER_SECRET: "${CONTROLLER_SECRET:-interview-lab-local-only}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./state:/state
+      - ./exercises:/exercises:ro
+      - history:/state/history:ro
+    # Answers only once gunicorn is serving, which is after the boot-time
+    # network check in app.py has run; nginx waits on this (see above). The
+    # image has no curl, and /healthz needs the shared header like every
+    # other route, hence python and the env var.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os, urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:5000/healthz', headers={'X-Controller-Key': os.environ['CONTROLLER_SECRET']}), timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - mysql_interview_ctl

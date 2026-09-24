@@ -1,0 +1,298 @@
+================================================================
+  MySQL Support Engineer Interview Lab — candidate-facing questions
+  (the ticket text shown in the left panel for each question)
+================================================================
+
+
+----------------------------------------------------------------
+  01-mysqld-down
+----------------------------------------------------------------
+
+# Question 1 — The application cannot connect
+
+The application team is paging. Every connection attempt is failing:
+
+```
+ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306'
+```
+
+Two things to do:
+
+1. **Get the application connecting again.**
+
+2. The same team says that just before the outage they were getting
+   `Too many connections` errors, and they want to know how bad it is.
+   Once the server is reachable, find **how many connections the
+   application account `appuser` is holding open**, and write just that
+   number (digits only) to `/home/candidate/answer.txt`.
+
+> Give the application a few seconds to reconnect before you count. Your
+> own shell sessions connect as `candidate`, so they are not part of the
+> number being asked for.
+
+
+----------------------------------------------------------------
+  02-import-company
+----------------------------------------------------------------
+
+# Question 2 — Load the customer's database
+
+A customer sent us a dump of their HR database so we can reproduce an issue
+they are reporting. It is on this server, in your home directory
+(`/home/candidate`):
+
+```
+employees-db.tar.gz
+```
+
+Load it. When you are done the server should have a database called
+`employees` containing their data.
+
+
+----------------------------------------------------------------
+  03-replication
+----------------------------------------------------------------
+
+# Question 3 — Build a replication topology
+
+The application team needs GTID-based asynchronous replication across
+`node1`, `node2` and `node3`: **node1 as the source**, the other two as
+replicas.
+
+- `node1` and `node2` already have MySQL running, but standalone — nothing
+  is replicating. Wire those two up first.
+- `node3` **has had its Percona Server packages removed.** Somebody
+  uninstalled the server and the client, so there is no `mysqld` and no
+  `mysql` binary on it. The old `/etc/my.cnf` and the data directory under
+  `/var/lib/mysql` — with the data and the accounts it had — are still on
+  disk. Install Percona Server for MySQL again (the Percona repo is already
+  configured on the box), then bring node3 into the topology alongside the
+  others. Whether you reuse what is on disk or rebuild node3 from node1 is
+  your call.
+
+Set it up so node2 and node3 are both healthy replicas of node1, with the
+IO and SQL threads running on each.
+
+> There is more than one way to get node3 into the topology, and the check
+> only looks at the end state — take whichever route you would take on a
+> customer's system. Name the source by hostname or by IP address, whichever
+> you prefer — both are accepted.
+
+> A replication account already exists on every node: user `repl`, password
+> `repl`. From node1 or node2 you can reach the other nodes with
+> `mysql -h node2`; node3 has no `mysql` client until you have installed it.
+
+
+----------------------------------------------------------------
+  04-promote-node1
+----------------------------------------------------------------
+
+# Question 4 — The application cannot write
+
+The application is failing on every write:
+
+```
+ERROR 1290 (HY000): The MySQL server is running with the --super-read-only
+option so it cannot execute this statement
+```
+
+Reads are working fine. The application connects to **node1** and expects to
+write there.
+
+Put the topology back the way the application expects. Precisely, when you
+are done:
+
+- **node1** is the source: writable (`read_only` and `super_read_only` both
+  OFF) and **not configured as a replica of anything**. Stopping its
+  replication threads is not enough — a stopped replica starts replicating
+  again on the next `mysqld` restart, which would pull the other node's
+  writes back into node1 — so clear its replica configuration entirely.
+- **node2** and **node3** replicate from node1 with both threads running,
+  and are protected with **`super_read_only = ON`**. Plain `read_only` is
+  not enough: it still lets privileged accounts write to a replica.
+
+> Replication account: user `repl`, password `repl`. Reach the other nodes
+> with `mysql -h node2`. Name the source by hostname or by IP address,
+> whichever you prefer — both are accepted.
+
+
+----------------------------------------------------------------
+  05-tablespace-recovery
+----------------------------------------------------------------
+
+# Question 5 — A table has stopped working
+
+The application team reports that one part of their reporting has broken.
+Every query that touches `employees.titles` fails immediately, while the
+rest of the database behaves normally:
+
+```
+mysql> SELECT COUNT(*) FROM employees.titles;
+ERROR 1814 (HY000): ...
+```
+
+The storage team says they recovered a file belonging to that table from a
+snapshot and left it for you at:
+
+```
+/opt/recovered/titles.ibd
+```
+
+Get the table working again, with all of its rows.
+
+> There is no dump to fall back on for this one — the recovered file is
+> what you have.
+
+
+----------------------------------------------------------------
+  06-missing-index
+----------------------------------------------------------------
+
+# Question 6 — Slow reporting query
+
+The reporting team complains that this query is slow. It runs on
+`employees.titles`, which holds over 440,000 rows:
+
+```sql
+SELECT * FROM employees.titles
+WHERE title = 'Engineer'
+  AND from_date >= '1990-01-01'
+ORDER BY to_date DESC;
+```
+
+`EXPLAIN` shows it reading the whole table and finishing with
+`Using filesort`.
+
+Make the query run from an index, so the plan has **no full scan and no
+filesort**. Check `EXPLAIN` before and after — the timing should drop.
+
+> Any index that gets the plan there is fine; the check looks at the plan,
+> not at one particular definition.
+
+> The query returns over 100,000 rows. Do not run it bare to time it — this
+> browser terminal will choke on the output. `EXPLAIN ANALYZE` executes the
+> query and reports the actual time spent in each step without printing a
+> row, or set `pager cat > /dev/null` in the `mysql` client first and read
+> the `rows in set (N sec)` line.
+
+
+----------------------------------------------------------------
+  07-replication-lag
+----------------------------------------------------------------
+
+# Question 7 — node3 is falling behind
+
+`SHOW REPLICA STATUS` on `node3` reports `Replica_IO_Running: Yes` and
+`Replica_SQL_Running: Yes`, but `Seconds_Behind_Source` is climbing and
+never comes back down. node2 is keeping up fine, and writes on node1 are
+succeeding, so the source itself looks healthy.
+
+A backup script ran on node3 last night.
+
+Find why node3 isn't applying its relay log and fix it. The lag should drop
+to ~0 once you do.
+
+
+----------------------------------------------------------------
+  08-bad-config
+----------------------------------------------------------------
+
+# Question 8 — node3's mysqld will not start
+
+`node3` has dropped out of the replication topology. `sudo systemctl status
+mysqld` on node3 shows the service is failed and will not start back up.
+
+Find the cause and bring node3 back as a healthy replica of node1.
+
+Read the log after every attempt — mysqld reports one problem at a time.
+If the error log itself is not telling you anything, try
+`sudo journalctl -u mysqld`. The `sudo` matters: your user cannot read the
+system journal on its own, so without it the command shows nothing useful.
+
+
+----------------------------------------------------------------
+  09-write-the-query
+----------------------------------------------------------------
+
+# Question 9 — Write the query
+
+A customer has asked us to pull a list out of their HR database for an
+audit. They want:
+
+> everyone whose job title includes **"Engineer"** — any kind of engineer —
+> in department **d005**, whose last name is **'Trumbly'**, oldest first by
+> date of birth.
+
+Write the query that answers this and save it to:
+
+```
+/home/candidate/answer.sql
+```
+
+The file is run against the `employees` database, so unqualified table
+names are fine. **Return `emp_no` as the first column** — the rest of the
+output is up to you.
+
+> The customer's wording leaves one thing open, and the schema makes it
+> matter: `dept_emp` and `titles` keep history — one row per assignment,
+> with `to_date = '9999-01-01'` marking the current one. The customer did
+> not say whether they want the people **currently** in d005 holding an
+> Engineer title, or everyone who has **ever** been in d005 and ever held
+> one. Either reading is accepted, as long as you apply the same reading to
+> both the department and the title. State which one you chose in a SQL
+> comment at the top of the file, the way you would tell the customer.
+
+
+----------------------------------------------------------------
+  10-restore-backup
+----------------------------------------------------------------
+
+# Question 10 — The database is gone
+
+The application is down. A customer engineer was working on what they
+thought was a staging server:
+
+```
+mysql> DROP DATABASE employees;
+Query OK, 8 rows affected (2.31 sec)
+```
+
+There is a **Percona XtraBackup** of this instance on the box at
+`/backups/full`. It is a raw backup — it has not been prepared.
+
+Get the application's data back.
+
+> How you do it is your call — the check looks at the data, not at the
+> route you took.
+
+
+----------------------------------------------------------------
+  11-assess-and-recommend
+----------------------------------------------------------------
+
+# Question 11 — Assess this server
+
+This is the production primary. The application team says it is slow under
+load and getting worse, but nobody has looked at it properly in a long time.
+
+Two things, in your own words:
+
+1. **What is wrong with it?** Look at the server the way you would on a
+   customer call — configuration, what the workload is doing, anything you
+   would flag.
+2. **What would you recommend?** Both the things you would change now and
+   the things you would want in place going forward.
+
+Write your findings to:
+
+```
+/home/candidate/report.md
+```
+
+Plain text or Markdown, whatever you prefer. Be specific — name the
+settings or queries you mean and say *why* they matter. If you would want
+to check something before changing it, say that too.
+
+> This one is read by a human, not graded by a script. There is no single
+> right answer, and you will not be marked down for saying a change needs
+> testing or a maintenance window.

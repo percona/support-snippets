@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Before you begin — MySQL Support Engineer Interview</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="startpage">
+<header>
+  <div class="title">MySQL Support Engineer Interview</div>
+  <div class="actions"><span class="notyet">Clock not started</span></div>
+</header>
+
+<main class="startmain">
+  <div class="startcard">
+    <h1>Before you begin</h1>
+    <p class="lede">
+      Please read this page. It explains how the screen works and what the rules
+      are. Take as long as you like &mdash; your time does not start until you
+      press the button at the bottom.
+    </p>
+
+    {% include "_briefing.html" %}
+
+    <form id="startform" class="startform" method="post" action="/start">
+      <label class="ack">
+        <input type="checkbox" id="ack" name="ack" value="yes">
+        <span>I have read the rules above, and I will not use AI assistance
+              during this test.</span>
+      </label>
+      <button type="submit" id="startbtn" disabled>Start the test</button>
+      <p class="startnote">
+        Pressing this starts your
+        {{ '%.1f'|format(duration_seconds / 3600) }}-hour clock and opens the
+        first question.
+      </p>
+      <p class="starterr" id="starterr" hidden></p>
+    </form>
+  </div>
+</main>
+
+<script>
+(function () {
+  var ack = document.getElementById('ack');
+  var btn = document.getElementById('startbtn');
+  var form = document.getElementById('startform');
+  var err = document.getElementById('starterr');
+  // The button stays dead until the box is ticked: the acknowledgement has to
+  // be a deliberate act, because it is recorded as one.
+  ack.addEventListener('change', function () { btn.disabled = !ack.checked; });
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!ack.checked) return;
+    btn.disabled = true; btn.textContent = 'Starting…';
+    fetch('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ack: true })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || res.d.error) {
+          err.textContent = res.d.error || 'Could not start. Tell your interviewer.';
+          err.hidden = false;
+          btn.disabled = false; btn.textContent = 'Start the test';
+          return;
+        }
+        window.location.href = '/';
+      })
+      .catch(function () {
+        err.textContent = 'Could not start. Tell your interviewer.';
+        err.hidden = false;
+        btn.disabled = false; btn.textContent = 'Start the test';
+      });
+  });
+})();
+</script>
+</body>
+</html>

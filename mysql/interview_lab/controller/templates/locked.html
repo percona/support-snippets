@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session locked · MySQL Support Engineer Interview</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="startpage">
+  <header><div class="title">MySQL Support Engineer Interview</div></header>
+  <main class="startmain">
+    <div class="startcard" role="alert">
+      <h1>Session locked</h1>
+      <p>Machine-made input was detected. The terminals and Files editor are unavailable. The interviewer has been notified.</p>
+      <p>Speak with the interviewer on the call. Only they can unlock this session.</p>
+    </div>
+  </main>
+  <script>
+    setInterval(function () {
+      fetch('/lock-state', { cache: 'no-store' }).then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.locked) {
+            location.replace('/');
+          }
+        }).catch(function () {});
+    }, 1000);
+  </script>
+</body>
+</html>

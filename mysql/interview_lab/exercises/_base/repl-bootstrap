@@ -1,0 +1,73 @@
+#!/bin/bash
+# Wire this node set into async GTID replication: the first peer is the
+# source, every other peer becomes a replica of it.
+#
+# Sync part (blocks interview-setup): wait for our own mysqld.
+# Async part (backgrounded; only NODE_INDEX=0 runs it):
+#   - wait for every peer in $NODE_PEERS to answer a ping
+#   - make the source writable, point each replica at it with GTID
+#     auto-positioning, and set the replicas super_read_only
+#
+# Logs land in /var/log/repl-bootstrap.log so the candidate doesn't see them.
+set -e
+
+LOG=/var/log/repl-bootstrap.log
+# Created 0600 before anything is written. Under systemd's default umask the
+# log lands world-readable, and per-question setup scripts have appended
+# fault descriptions to it, so a `grep -ri` over /var/log handed a candidate
+# the answer with no sudo involved. chmod rather than umask, because a setup script may have
+# created the file first with the wrong mode.
+touch "$LOG" && chmod 600 "$LOG"
+exec 9>>"$LOG"
+
+. /etc/sysconfig/interview 2>/dev/null || true
+NODE_INDEX="${NODE_INDEX:-0}"
+NODE_PEERS="${NODE_PEERS:-$(hostname)}"
+
+for _ in $(seq 1 120); do
+    mysqladmin --protocol=socket ping >/dev/null 2>&1 && break
+    sleep 1
+done
+
+# Only the first node orchestrates the topology.
+[ "$NODE_INDEX" = "0" ] || exit 0
+
+# $1 optionally names the source host; it defaults to the first peer. Question
+# 4 uses this to stand the topology up "backwards" (node2 as the source).
+SOURCE_OVERRIDE="${1:-}"
+
+(
+    set -e
+    IFS=',' read -ra PEERS <<<"$NODE_PEERS"
+    SOURCE="${SOURCE_OVERRIDE:-${PEERS[0]}}"
+
+    for peer in "${PEERS[@]}"; do
+        for _ in $(seq 1 240); do
+            mysqladmin -h "$peer" -uroot ping >/dev/null 2>&1 && break
+            sleep 1
+        done
+    done
+
+    mysql -h "$SOURCE" -uroot >&9 2>&1 <<'SQL' || true
+SET GLOBAL super_read_only = OFF;
+SET GLOBAL read_only       = OFF;
+SQL
+
+    for peer in "${PEERS[@]}"; do
+        [ "$peer" = "$SOURCE" ] && continue
+        mysql -h "$peer" -uroot >&9 2>&1 <<SQL || true
+STOP REPLICA;
+CHANGE REPLICATION SOURCE TO
+  SOURCE_HOST          = '${SOURCE}',
+  SOURCE_PORT          = 3306,
+  SOURCE_USER          = 'repl',
+  SOURCE_PASSWORD      = 'repl',
+  SOURCE_AUTO_POSITION = 1,
+  GET_SOURCE_PUBLIC_KEY = 1;
+START REPLICA;
+SET GLOBAL super_read_only = ON;
+SQL
+    done
+
+    echo "[repl-bootstrap] $(date -u +%FT%TZ) source=${SOURCE}" >&9
+) &

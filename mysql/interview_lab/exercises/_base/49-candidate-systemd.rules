@@ -1,0 +1,13 @@
+// Let the candidate drive systemd units without an authentication prompt.
+//
+// Without this, polkit asks a candidate who forgets `sudo` for root's
+// password — which does not exist in this image — so they hit a dead end
+// that tests nothing. With it, `systemctl start mysqld` simply works, the
+// way a DBA account with a polkit grant behaves on a real server.
+// `sudo systemctl ...` keeps working exactly as before.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "candidate") {
+        return polkit.Result.YES;
+    }
+});

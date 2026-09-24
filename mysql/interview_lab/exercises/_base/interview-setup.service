@@ -1,0 +1,13 @@
+[Unit]
+Description=Per-level interview setup (lab accounts + setup.sh)
+After=mysqld.service
+Wants=mysqld.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/interview-setup
+RemainAfterExit=true
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,183 @@
+{# Shared by the start page and the in-test Help panel, so the rules a
+   candidate agreed to are the same words they can re-read at any time. #}
+<div class="brief">
+
+  <h2>What this is</h2>
+  <p>
+    A hands-on test. You get {{ max_level }} questions, one at a time, on real
+    MySQL servers. Each one is a problem a customer might actually raise: a
+    server that will not start, replication that has stopped, a slow query.
+  </p>
+  <p>
+    You have <strong>{{ '%.1f'|format(duration_seconds / 3600) }} hours</strong>.
+    The clock starts when you press the button at the bottom of this page &mdash;
+    not before.
+  </p>
+  <p>
+    The questions get harder as you go. The last one is a written assessment
+    rather than a fix &mdash; leave about 20 minutes for it.
+  </p>
+
+  <h2>Your screen</h2>
+  <svg viewBox="0 0 640 250" class="dia" role="img" aria-label="Screen layout: question on the left, terminals on the right">
+    <rect x="1" y="1" width="638" height="248" rx="6" class="d-edge"/>
+    <rect x="1" y="1" width="638" height="30" rx="6" class="d-bar"/>
+    <text x="14" y="21" class="d-onbar">Question 3 / 11</text>
+    <rect x="470" y="7" width="76" height="18" rx="4" class="d-chip"/>
+    <text x="508" y="20" class="d-onbar d-mid">02:41:09</text>
+    <rect x="556" y="7" width="70" height="18" rx="4" class="d-go"/>
+    <text x="591" y="20" class="d-ongo d-mid">Send</text>
+    <rect x="1" y="31" width="250" height="218" class="d-paper"/>
+    <text x="16" y="56" class="d-h">The question</text>
+    <line x1="16" y1="70" x2="215" y2="70" class="d-line"/>
+    <line x1="16" y1="84" x2="230" y2="84" class="d-line"/>
+    <line x1="16" y1="98" x2="190" y2="98" class="d-line"/>
+    <rect x="251" y="31" width="388" height="218" class="d-dark"/>
+    <rect x="251" y="31" width="388" height="22" class="d-tabbar"/>
+    <text x="268" y="46" class="d-tab d-on">node1</text>
+    <text x="316" y="46" class="d-tab">node2</text>
+    <text x="364" y="46" class="d-tab">node3</text>
+    <text x="410" y="46" class="d-tab">+</text>
+    <text x="440" y="46" class="d-tab">Files</text>
+    <text x="268" y="76" class="d-code">candidate@node1:~$ </text>
+    <text x="268" y="94" class="d-code">sudo systemctl status mysqld</text>
+    <text x="90" y="190" class="d-note">Read the problem here</text>
+    <text x="400" y="190" class="d-note">Do the work here</text>
+    <path d="M120 176 L120 120" class="d-arrow"/>
+    <path d="M430 176 L430 110" class="d-arrow"/>
+    <text x="626" y="228" class="d-note d-end">Send = check my answer</text>
+    <path d="M598 216 L598 40" class="d-arrow"/>
+  </svg>
+  <p>
+    The problem is on the left. Your servers are on the right. The clock and the
+    <strong>Send</strong> button are at the top.
+  </p>
+
+  <h2>Working on more than one server</h2>
+  <svg viewBox="0 0 640 96" class="dia" role="img" aria-label="Tab bar with one tab per server">
+    <rect x="1" y="1" width="638" height="34" rx="5" class="d-tabbar"/>
+    <rect x="8" y="6" width="66" height="24" rx="4" class="d-tabsel"/>
+    <text x="41" y="22" class="d-tab d-on d-mid">node1</text>
+    <text x="108" y="22" class="d-tab d-mid">node2</text>
+    <text x="176" y="22" class="d-tab d-mid">node3</text>
+    <text x="240" y="22" class="d-tab d-mid">+</text>
+    <rect x="300" y="6" width="58" height="24" rx="4" class="d-tabalt"/>
+    <text x="329" y="22" class="d-tab d-mid">Files</text>
+    <text x="41" y="60" class="d-note d-mid">click to switch</text>
+    <text x="240" y="60" class="d-note d-mid">extra window</text>
+    <text x="329" y="60" class="d-note d-mid">write files</text>
+    <text x="16" y="86" class="d-note">Some questions use one server. Others use three &mdash; node1, node2 and node3.</text>
+  </svg>
+  <p>
+    Each tab is a separate server. Click a tab to move between them. The
+    <strong>+</strong> button opens another terminal and asks which server it
+    should connect to &mdash; handy for watching a log on one server while you
+    work on another, or for a second shell on the same one.
+  </p>
+  <p class="tip">
+    You can also reach the others from inside a shell:
+    <code>mysql -h node2</code>
+  </p>
+
+  <h2>Writing files</h2>
+  <svg viewBox="0 0 640 170" class="dia" role="img" aria-label="Files panel: file list on the left, editor on the right">
+    <rect x="1" y="1" width="638" height="168" rx="6" class="d-edge"/>
+    <rect x="1" y="1" width="638" height="24" class="d-tabbar"/>
+    <text x="20" y="17" class="d-tab">node1</text>
+    <rect x="58" y="3" width="52" height="19" rx="4" class="d-tabalt"/>
+    <text x="84" y="17" class="d-tab d-mid">Files</text>
+    <rect x="1" y="25" width="150" height="144" class="d-side"/>
+    <text x="14" y="44" class="d-lbl">NEW FILE</text>
+    <rect x="12" y="50" width="88" height="18" rx="3" class="d-input"/>
+    <text x="18" y="63" class="d-code2">report.md</text>
+    <rect x="104" y="50" width="38" height="18" rx="3" class="d-go2"/>
+    <text x="123" y="63" class="d-ongo d-mid">Create</text>
+    <text x="14" y="90" class="d-code2">&#8226; answer.txt</text>
+    <text x="14" y="107" class="d-code2">&#8226; repl.sql</text>
+    <rect x="151" y="25" width="488" height="144" class="d-dark"/>
+    <text x="166" y="44" class="d-code">/home/candidate/report.md</text>
+    <rect x="566" y="32" width="60" height="18" rx="4" class="d-go"/>
+    <text x="596" y="45" class="d-ongo d-mid">Save</text>
+    <text x="166" y="72" class="d-code">The buffer pool is far too small for</text>
+    <text x="166" y="88" class="d-code">this dataset, so almost every read</text>
+    <text x="166" y="104" class="d-code">goes to disk.</text>
+    <text x="166" y="140" class="d-note2">Copy and paste work in here. Saves to the server you picked.</text>
+  </svg>
+  <p>
+    Typing a long statement into a terminal is slow and easy to get wrong. The
+    <strong>Files</strong> tab lets you write it in a proper editor instead, save
+    it to <code>/home/candidate</code>, and then use it:
+  </p>
+  <p class="tip"><code>mysql &lt; repl.sql</code></p>
+  <p>
+    Any kind of file works &mdash; <code>.sql</code>, <code>.txt</code>,
+    <code>.md</code>, or no extension at all. When a question asks you to write a
+    particular file, the name is filled in for you.
+  </p>
+
+  <h2>Finishing a question</h2>
+  <p>
+    Press <strong>Send</strong> at the top right. Your work is checked on the
+    server, and you move to the next question.
+  </p>
+  <p class="warn">
+    You cannot go back to a question once you have moved on, so make sure you
+    are happy before you press Send. You are not told whether you passed &mdash;
+    keep going either way.
+  </p>
+  <p>
+    The check can take up to about 40 seconds. Leave the page alone while it
+    runs &mdash; do not reload or close the tab.
+  </p>
+  <p>
+    When the clock reaches <strong>0:00</strong> nothing stops: a red banner
+    appears, the timer counts upwards, and you can keep working and still press
+    Send. The extra time is visible to your interviewer.
+  </p>
+
+  <h2>Copy and paste</h2>
+  <p>
+    You cannot select or copy text from the question or from a terminal, and
+    you cannot paste into a terminal: type your commands there. The
+    <strong>Files</strong> editor is the one place where selecting, copying and
+    pasting work &mdash; for example a statement you looked up in the
+    documentation &mdash; and every save there is recorded, including where any
+    pasted text came from.
+  </p>
+  <p>
+    Type at your own pace. Input that no hand produces &mdash; text arriving in
+    one piece, or keys faster or more evenly than a person types &mdash; is
+    rejected and locks your session until the interviewer decides whether to
+    unlock it. The interviewer sees when it happened and why.
+    Dictation and text-expander tools trigger it too, so don't use them here.
+  </p>
+
+  <h2>Using AI is not allowed</h2>
+  <p class="rule">
+    Do not use AI assistants or AI agents of any kind during this test &mdash;
+    no chat assistants, no coding assistants, no AI browser extensions, and
+    nothing driving this page for you.
+  </p>
+  <p>
+    <strong>The official documentation and search engines are fine.</strong>
+    Looking things up is a normal part of the job and we expect you to do it.
+    What we are measuring is how you diagnose and fix a real system, which is
+    not something an assistant can do for you on a customer call.
+  </p>
+  <p class="tip">
+    Your interviewer can watch your terminals live while you work, and the
+    whole session is recorded, including what you type and anything pasted into
+    the editor. If you get stuck, say so, or write what you tried and what you
+    think is going on into a <code>notes.txt</code> in the <strong>Files</strong>
+    tab and save it &mdash; the save is recorded with your session. A partly
+    finished answer with good reasoning is worth far more than one you did not
+    arrive at yourself.
+  </p>
+
+  <h2>If something looks broken</h2>
+  <p>
+    Some questions start with something genuinely broken &mdash; that is the
+    point. But if the page itself stops responding, or a terminal will not
+    open, tell your interviewer rather than working around it.
+  </p>
+</div>

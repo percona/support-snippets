@@ -338,8 +338,12 @@ cat <<EOF
     interviewer http://$IP/interviewer/
     ssh         ssh -i $KEYFILE ec2-user@$IP
     instance    $IID     sg $SG
-
-    verified    $SMOKE_RESULT
+EOF
+# Verification is opt-in (--smoketest); a run without it reports nothing about it.
+if [ "$SMOKETEST" = 1 ]; then
+    printf '\n    verified    %s\n' "$SMOKE_RESULT"
+fi
+cat <<EOF
 
 Full log of this run: $LOGFILE
     (it names every question and the wrong fixes the suite tries: never share it with a candidate)
@@ -368,8 +372,4 @@ fi
 if [ "$SMOKE_RESULT" = FAILED ]; then
     echo "==> DO NOT interview on this lab until the suite passes. Log: $LOGFILE" >&2
     exit 1
-fi
-if [ "$SMOKE_RESULT" = "not run" ]; then
-    echo "Verify before you put anyone in front of it:"
-    echo "    ./tools/remote-smoketest.sh ec2-user@$IP -i $KEYFILE"
 fi
